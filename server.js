@@ -25,8 +25,10 @@ const storage = multer.diskStorage({
 });
 
 const fileFilter = (req, file, cb) => {
-  const allowed = ['image/jpeg', 'image/png', 'application/pdf'];
-  cb(null, allowed.includes(file.mimetype));
+  const allowed = ['image/jpeg', 'image/png', 'application/pdf', 'text/csv', 'application/csv', 'application/vnd.ms-excel', 'text/plain'];
+  // Also allow by extension for CSV files
+  const isCSV = file.originalname.toLowerCase().endsWith('.csv');
+  cb(null, allowed.includes(file.mimetype) || isCSV);
 };
 
 const upload = multer({ storage, fileFilter, limits: { fileSize: 10 * 1024 * 1024 } });
@@ -66,13 +68,14 @@ app.get('/api/receipts/:id', (req, res) => {
 // Create receipt
 app.post('/api/receipts', upload.single('file'), (req, res) => {
   try {
-    const { job_name, store_location, receipt_date, notes } = req.body;
+    const { job_name, store_location, receipt_date, notes, imported_file_path, imported_file_type } = req.body;
     if (!job_name || !receipt_date) {
       return res.status(400).json({ error: 'Job name and date are required' });
     }
 
-    const file_path = req.file ? req.file.filename : null;
-    const file_type = req.file ? req.file.mimetype : null;
+    // Use uploaded file, or imported file reference
+    const file_path = req.file ? req.file.filename : (imported_file_path || null);
+    const file_type = req.file ? req.file.mimetype : (imported_file_type || null);
 
     const receipt = db.createReceipt({
       job_name, store_location, receipt_date, notes, file_path, file_type
@@ -172,6 +175,21 @@ app.get('/api/items', (req, res) => {
   try {
     const items = db.getAllItems();
     res.json(items);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Upload CSV file (for import)
+app.post('/api/upload-csv', upload.single('file'), (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+    res.json({
+      file_path: req.file.filename,
+      file_type: req.file.mimetype
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

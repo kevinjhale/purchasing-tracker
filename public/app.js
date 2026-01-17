@@ -18,6 +18,10 @@ let sortColumn = 'purchase_date';
 let sortDirection = 'desc';
 let currentRotation = 0;
 let selectedFile = null;
+let modalCsvData = null;
+let modalCsvHeaders = [];
+let modalCsvRawLines = [];
+let modalCsvFile = null;
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
@@ -365,7 +369,21 @@ function getThumbnail(receipt) {
     return `<div class="receipt-thumbnail pdf" onclick="openPreview('${receipt.file_path}', 'pdf')">PDF</div>`;
   }
 
+  // Check for CSV - browsers send various MIME types
+  const csvTypes = ['text/csv', 'application/csv', 'application/vnd.ms-excel', 'text/plain'];
+  const isCSV = csvTypes.includes(receipt.file_type) || receipt.file_path.toLowerCase().endsWith('.csv');
+  if (isCSV) {
+    return `<div class="receipt-thumbnail csv" onclick="downloadFile('${receipt.file_path}')">CSV</div>`;
+  }
+
   return `<img class="receipt-thumbnail" src="/uploads/${receipt.file_path}" alt="Receipt" onclick="openPreview('${receipt.file_path}', 'image')">`;
+}
+
+function downloadFile(filePath) {
+  const link = document.createElement('a');
+  link.href = `/uploads/${filePath}`;
+  link.download = filePath;
+  link.click();
 }
 
 function renderItems(receipt) {
@@ -502,13 +520,51 @@ function handleFileSelect(e) {
 
   const previewPanel = document.getElementById('filePreviewPanel');
   const previewImage = document.getElementById('previewImage');
+  const csvImportOptions = document.getElementById('csvImportOptions');
+  const saveBtn = document.getElementById('saveReceiptBtn');
 
   if (!file) {
     previewPanel.hidden = true;
+    csvImportOptions.hidden = true;
+    saveBtn.textContent = 'Save Receipt';
+    modalCsvFile = null;
+    modalCsvData = null;
     return;
   }
 
-  if (file.type.startsWith('image/')) {
+  // Check if CSV file
+  const isCSV = file.type === 'text/csv' || file.type === 'application/vnd.ms-excel' ||
+                file.name.toLowerCase().endsWith('.csv');
+
+  if (isCSV) {
+    previewPanel.hidden = true;
+    modalCsvFile = file;
+    saveBtn.textContent = 'Import CSV';
+
+    // Parse CSV and show options
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target.result;
+      modalCsvRawLines = text.split(/\r?\n/).filter(line => line.trim());
+
+      if (modalCsvRawLines.length < 2) {
+        alert('CSV must have at least 2 rows');
+        csvImportOptions.hidden = true;
+        return;
+      }
+
+      renderModalRawPreview();
+      parseModalCSV();
+      showModalMappingOptions();
+      csvImportOptions.hidden = false;
+    };
+    reader.readAsText(file);
+  } else if (file.type.startsWith('image/')) {
+    csvImportOptions.hidden = true;
+    modalCsvFile = null;
+    modalCsvData = null;
+    saveBtn.textContent = 'Save Receipt';
+
     const reader = new FileReader();
     reader.onload = (event) => {
       previewImage.src = event.target.result;
@@ -519,8 +575,94 @@ function handleFileSelect(e) {
     reader.readAsDataURL(file);
   } else {
     previewPanel.hidden = true;
+    csvImportOptions.hidden = true;
+    modalCsvFile = null;
+    modalCsvData = null;
+    saveBtn.textContent = 'Save Receipt';
   }
 }
+
+function renderModalRawPreview() {
+  const headerRow = parseInt(document.getElementById('modalHeaderRowSelect').value);
+  const previewLines = modalCsvRawLines.slice(0, 10);
+
+  const html = `<div class="raw-preview-content"><table>${previewLines.map((line, i) => {
+    const rowNum = i + 1;
+    const cells = parseCSVLine(line);
+    const rowClass = rowNum === headerRow ? 'header-row' : (rowNum < headerRow ? 'skip-row' : '');
+    return `<tr class="${rowClass}">
+      <td style="color: var(--gray-600); font-weight: 500;">${rowNum}</td>
+      ${cells.slice(0, 6).map(cell => `<td>${escapeHtml(cell.substring(0, 25))}</td>`).join('')}
+      ${cells.length > 6 ? '<td>...</td>' : ''}
+    </tr>`;
+  }).join('')}</table></div>`;
+
+  document.getElementById('modalRawPreviewContent').innerHTML = html;
+  document.getElementById('modalRawPreview').hidden = false;
+}
+
+function parseModalCSV() {
+  const headerRow = parseInt(document.getElementById('modalHeaderRowSelect').value);
+
+  if (modalCsvRawLines.length < headerRow + 1) {
+    alert('Not enough rows for selected header row');
+    return;
+  }
+
+  modalCsvHeaders = parseCSVLine(modalCsvRawLines[headerRow - 1]);
+  modalCsvData = modalCsvRawLines.slice(headerRow).map(line => parseCSVLine(line));
+}
+
+function showModalMappingOptions() {
+  const targetFields = ['item_name', 'quantity', 'purchase_date', 'amount'];
+
+  const container = document.getElementById('modalMappingContainer');
+  container.innerHTML = targetFields.map(field => {
+    const options = modalCsvHeaders.map((h, i) => {
+      const selected = autoMatchField(h, field) ? 'selected' : '';
+      return `<option value="${i}" ${selected}>${escapeHtml(h)}</option>`;
+    }).join('');
+
+    return `
+      <div class="mapping-row">
+        <label>${formatFieldName(field)}</label>
+        <select data-field="${field}">
+          <option value="">-- Skip --</option>
+          ${options}
+        </select>
+      </div>
+    `;
+  }).join('');
+
+  // Show unit price options
+  const unitPriceOptions = document.getElementById('modalUnitPriceOptions');
+  unitPriceOptions.hidden = false;
+
+  const unitPriceSelect = document.getElementById('modalUnitPriceSelect');
+  unitPriceSelect.innerHTML = `<option value="">-- Select column --</option>` +
+    modalCsvHeaders.map((h, i) => {
+      const selected = autoMatchField(h, 'unit_price') ? 'selected' : '';
+      return `<option value="${i}" ${selected}>${escapeHtml(h)}</option>`;
+    }).join('');
+
+  updateModalUnitPriceVisibility();
+}
+
+function updateModalUnitPriceVisibility() {
+  const calcUnitPrice = document.getElementById('modalCalcUnitPrice').checked;
+  document.getElementById('modalUnitPriceMapping').hidden = calcUnitPrice;
+}
+
+// Event listeners for modal CSV options
+document.getElementById('modalHeaderRowSelect').addEventListener('change', () => {
+  if (modalCsvRawLines.length > 0) {
+    renderModalRawPreview();
+    parseModalCSV();
+    showModalMappingOptions();
+  }
+});
+
+document.getElementById('modalCalcUnitPrice').addEventListener('change', updateModalUnitPriceVisibility);
 
 function rotateImage(degrees) {
   currentRotation = (currentRotation + degrees + 360) % 360;
@@ -575,6 +717,13 @@ async function handleReceiptSubmit(e) {
   e.preventDefault();
 
   const id = document.getElementById('receiptId').value;
+
+  // Check if this is a CSV import
+  if (modalCsvFile && modalCsvData && modalCsvData.length > 0) {
+    await handleModalCSVImport();
+    return;
+  }
+
   const formData = new FormData();
 
   formData.append('job_name', document.getElementById('jobName').value);
@@ -598,12 +747,169 @@ async function handleReceiptSubmit(e) {
   }
 }
 
+async function handleModalCSVImport() {
+  // Get form values as defaults
+  const defaultJobName = document.getElementById('jobName').value || 'CSV Import';
+  const defaultStoreLocation = document.getElementById('storeLocation').value || '';
+  const defaultDate = document.getElementById('receiptDate').value || new Date().toISOString().split('T')[0];
+  const defaultNotes = document.getElementById('notes').value || '';
+
+  // Get mapping from modal
+  const mappingSelects = document.querySelectorAll('#modalMappingContainer select');
+  const mapping = {};
+  mappingSelects.forEach(select => {
+    if (select.value !== '') {
+      mapping[select.dataset.field] = parseInt(select.value);
+    }
+  });
+
+  // Get unit price settings
+  const useCalcUnitPrice = document.getElementById('modalCalcUnitPrice').checked;
+  const unitPriceColIdx = document.getElementById('modalUnitPriceSelect').value;
+  const useUnitPriceCol = !useCalcUnitPrice && unitPriceColIdx !== '';
+
+  // Validate required fields
+  const requiredFields = useUnitPriceCol ? ['item_name'] : ['item_name', 'amount'];
+  const missing = requiredFields.filter(f => mapping[f] === undefined);
+  if (missing.length) {
+    alert(`Please map required fields: ${missing.map(formatFieldName).join(', ')}`);
+    return;
+  }
+
+  if (!useCalcUnitPrice && unitPriceColIdx === '') {
+    alert('Please select a Unit Price column or check "Calculate unit price"');
+    return;
+  }
+
+  const saveBtn = document.getElementById('saveReceiptBtn');
+  saveBtn.disabled = true;
+  saveBtn.textContent = 'Importing...';
+
+  try {
+    // Upload CSV file first
+    let uploadedFile = null;
+    const uploadFormData = new FormData();
+    uploadFormData.append('file', modalCsvFile);
+    const uploadRes = await fetch(`${API}/upload-csv`, {
+      method: 'POST',
+      body: uploadFormData
+    });
+    if (uploadRes.ok) {
+      uploadedFile = await uploadRes.json();
+    }
+
+    // Create single receipt with all items (use form values, not CSV grouping)
+    const receiptFormData = new FormData();
+    receiptFormData.append('job_name', defaultJobName);
+    receiptFormData.append('store_location', defaultStoreLocation);
+    receiptFormData.append('receipt_date', defaultDate);
+    receiptFormData.append('notes', defaultNotes);
+
+    if (uploadedFile) {
+      receiptFormData.append('imported_file_path', uploadedFile.file_path);
+      receiptFormData.append('imported_file_type', uploadedFile.file_type);
+    }
+
+    const newReceipt = await saveReceipt(receiptFormData, null);
+
+    // Collect all items and merge duplicates
+    const itemsMap = new Map();
+
+    for (const row of modalCsvData) {
+      const itemName = (row[mapping.item_name] || 'Unknown Item').trim();
+      const quantity = parseInt(row[mapping.quantity]) || 1;
+      let amount;
+
+      if (useUnitPriceCol) {
+        const unitPrice = parseCurrency(row[unitPriceColIdx]);
+        amount = unitPrice * quantity;
+      } else {
+        amount = parseCurrency(row[mapping.amount]);
+      }
+
+      // Use date from CSV if mapped, otherwise use form date
+      const itemDate = mapping.purchase_date !== undefined
+        ? (row[mapping.purchase_date] || defaultDate)
+        : defaultDate;
+
+      // Key for deduplication (case-insensitive item name)
+      const key = itemName.toLowerCase();
+
+      if (itemsMap.has(key)) {
+        // Merge with existing item
+        const existing = itemsMap.get(key);
+        existing.quantity += quantity;
+        existing.amount += amount;
+      } else {
+        // New item
+        itemsMap.set(key, {
+          item_name: itemName,
+          quantity,
+          purchase_date: itemDate,
+          amount
+        });
+      }
+    }
+
+    // Save merged items
+    let success = 0;
+    let failed = 0;
+    const mergedCount = modalCsvData.length - itemsMap.size;
+
+    for (const [, itemData] of itemsMap) {
+      try {
+        await saveItem(newReceipt.id, itemData, null);
+        success++;
+      } catch (err) {
+        failed++;
+        console.error('Failed to add item:', err);
+      }
+    }
+
+    closeModal(receiptModal);
+    await loadReceipts();
+    resetFilePreview();
+    resetModalCSV();
+
+    // Show summary
+    let message = `Imported ${success} items.`;
+    if (mergedCount > 0) {
+      message += ` ${mergedCount} duplicate rows were merged.`;
+    }
+    if (failed > 0) {
+      message += ` ${failed} items failed.`;
+    }
+    if (mergedCount > 0 || failed > 0) {
+      alert(message);
+    }
+  } catch (err) {
+    console.error('CSV import error:', err);
+    alert('Failed to import CSV');
+  } finally {
+    saveBtn.disabled = false;
+    saveBtn.textContent = 'Save Receipt';
+  }
+}
+
+function resetModalCSV() {
+  modalCsvData = null;
+  modalCsvHeaders = [];
+  modalCsvRawLines = [];
+  modalCsvFile = null;
+  document.getElementById('csvImportOptions').hidden = true;
+  document.getElementById('modalRawPreview').hidden = true;
+  document.getElementById('modalHeaderRowSelect').value = '1';
+  document.getElementById('modalCalcUnitPrice').checked = true;
+}
+
 function resetFilePreview() {
   currentRotation = 0;
   selectedFile = null;
   document.getElementById('filePreviewPanel').hidden = true;
   document.getElementById('previewImage').src = '';
   updateRotationLabel();
+  resetModalCSV();
+  document.getElementById('saveReceiptBtn').textContent = 'Save Receipt';
 }
 
 async function handleItemSubmit(e) {
@@ -645,7 +951,11 @@ async function handleDelete() {
     if (deleteTarget.type === 'receipt') {
       await deleteReceipt(deleteTarget.id);
       closeModal(deleteModal);
-      loadReceipts();
+      await loadReceipts();
+      // Also refresh items tab if it was open
+      if (allItems.length > 0) {
+        await loadAllItems();
+      }
     } else {
       await deleteItem(deleteTarget.id);
       await loadReceipts();
@@ -657,6 +967,7 @@ async function handleDelete() {
       closeModal(deleteModal);
     }
   } catch (err) {
+    console.error('Delete error:', err);
     alert('Failed to delete');
   }
 
@@ -698,4 +1009,579 @@ function formatDate(dateStr) {
     month: 'short',
     day: 'numeric'
   });
+}
+
+function parseCurrency(value) {
+  if (!value) return 0;
+  // Remove currency symbols, commas, spaces, and other non-numeric chars except . and -
+  const cleaned = String(value).replace(/[^0-9.\-]/g, '');
+  return parseFloat(cleaned) || 0;
+}
+
+// ============================================
+// CSV Export/Import
+// ============================================
+
+let csvData = null;
+let csvHeaders = [];
+let csvRawLines = [];
+let csvFile = null;
+let headerMapping = {};
+let useCalculatedUnitPrice = true;
+
+// Export dropdown toggle
+document.getElementById('exportBtn').addEventListener('click', (e) => {
+  e.stopPropagation();
+  const menu = document.getElementById('exportMenu');
+  menu.hidden = !menu.hidden;
+});
+
+document.addEventListener('click', () => {
+  document.getElementById('exportMenu').hidden = true;
+});
+
+document.getElementById('exportReceipts').addEventListener('click', exportReceipts);
+document.getElementById('exportItems').addEventListener('click', exportItems);
+
+// Import button
+document.getElementById('importBtn').addEventListener('click', openImportModal);
+
+function exportReceipts() {
+  const headers = ['id', 'job_name', 'store_location', 'receipt_date', 'notes', 'total', 'item_count'];
+  const rows = receipts.map(r => {
+    const total = r.items.reduce((sum, i) => sum + parseFloat(i.amount), 0);
+    return [
+      r.id,
+      r.job_name,
+      r.store_location || '',
+      r.receipt_date,
+      r.notes || '',
+      total.toFixed(2),
+      r.items.length
+    ];
+  });
+
+  downloadCSV(headers, rows, 'receipts.csv');
+}
+
+function exportItems() {
+  const headers = ['id', 'item_name', 'quantity', 'purchase_date', 'amount', 'unit_price', 'store_location', 'job_name', 'receipt_id'];
+  const rows = allItems.length ? allItems : [];
+
+  // Load items if not already loaded
+  if (!rows.length) {
+    fetch(`${API}/items`)
+      .then(res => res.json())
+      .then(items => {
+        const data = items.map(i => {
+          const unitPrice = parseFloat(i.amount) / (i.quantity || 1);
+          return [
+            i.id,
+            i.item_name,
+            i.quantity || 1,
+            i.purchase_date,
+            parseFloat(i.amount).toFixed(2),
+            unitPrice.toFixed(2),
+            i.store_location || '',
+            i.job_name,
+            i.receipt_id
+          ];
+        });
+        downloadCSV(headers, data, 'items.csv');
+      });
+    return;
+  }
+
+  const data = rows.map(i => {
+    const unitPrice = parseFloat(i.amount) / (i.quantity || 1);
+    return [
+      i.id,
+      i.item_name,
+      i.quantity || 1,
+      i.purchase_date,
+      parseFloat(i.amount).toFixed(2),
+      unitPrice.toFixed(2),
+      i.store_location || '',
+      i.job_name,
+      i.receipt_id
+    ];
+  });
+
+  downloadCSV(headers, data, 'items.csv');
+}
+
+function downloadCSV(headers, rows, filename) {
+  const csvContent = [
+    headers.map(h => `"${h}"`).join(','),
+    ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+  ].join('\n');
+
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+// Import Modal
+const importModal = document.getElementById('importModal');
+
+function openImportModal() {
+  csvData = null;
+  csvHeaders = [];
+  csvRawLines = [];
+  csvFile = null;
+  headerMapping = {};
+  useCalculatedUnitPrice = true;
+
+  document.getElementById('importStep1').hidden = false;
+  document.getElementById('importStep2').hidden = true;
+  document.getElementById('importStep3').hidden = true;
+
+  document.getElementById('importNextBtn').hidden = true;
+  document.getElementById('importBackBtn').hidden = true;
+  document.getElementById('importRunBtn').hidden = true;
+  document.getElementById('importDoneBtn').hidden = true;
+  document.getElementById('importCancelBtn').hidden = false;
+
+  document.getElementById('headerRowSelect').value = '1';
+  document.getElementById('rawPreview').hidden = true;
+  document.getElementById('calcUnitPrice').checked = true;
+
+  // Reset drop zone - keep the input element, just reset its value and update text
+  const dropZone = document.getElementById('csvDropZone');
+  const fileInput = dropZone.querySelector('input[type="file"]');
+  if (fileInput) {
+    fileInput.value = '';
+  }
+  const dropZoneText = dropZone.querySelector('p');
+  if (dropZoneText) {
+    dropZoneText.textContent = 'Drag & drop a CSV file here, or click to select';
+  }
+
+  openModal(importModal);
+}
+
+// File drop zone
+const csvDropZone = document.getElementById('csvDropZone');
+const csvFileInput = document.getElementById('csvFileInput');
+
+csvDropZone.addEventListener('click', () => csvFileInput.click());
+
+csvDropZone.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  csvDropZone.classList.add('drag-over');
+});
+
+csvDropZone.addEventListener('dragleave', () => {
+  csvDropZone.classList.remove('drag-over');
+});
+
+csvDropZone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  csvDropZone.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file && file.name.endsWith('.csv')) {
+    handleCSVFile(file);
+  }
+});
+
+csvFileInput.addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (file) handleCSVFile(file);
+});
+
+function handleCSVFile(file) {
+  csvFile = file; // Store the file for later upload
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const text = e.target.result;
+    csvRawLines = text.split(/\r?\n/).filter(line => line.trim());
+
+    if (csvRawLines.length < 2) {
+      alert('CSV must have at least 2 rows');
+      return;
+    }
+
+    // Show raw preview
+    renderRawPreview();
+    document.getElementById('rawPreview').hidden = false;
+
+    // Parse with current header row setting
+    parseCSVWithHeaderRow();
+
+    if (csvData && csvData.length > 0) {
+      const dropZoneText = document.getElementById('csvDropZone').querySelector('p');
+      if (dropZoneText) {
+        dropZoneText.textContent = `Loaded: ${file.name} (${csvRawLines.length} rows)`;
+      }
+      document.getElementById('importNextBtn').hidden = false;
+    }
+  };
+  reader.readAsText(file);
+}
+
+function renderRawPreview() {
+  const headerRow = parseInt(document.getElementById('headerRowSelect').value);
+  const previewLines = csvRawLines.slice(0, 10);
+
+  const html = `<div class="raw-preview-content"><table>${previewLines.map((line, i) => {
+    const rowNum = i + 1;
+    const cells = parseCSVLine(line);
+    const rowClass = rowNum === headerRow ? 'header-row' : (rowNum < headerRow ? 'skip-row' : '');
+    return `<tr class="${rowClass}">
+      <td style="color: var(--gray-600); font-weight: 500;">${rowNum}</td>
+      ${cells.slice(0, 8).map(cell => `<td>${escapeHtml(cell.substring(0, 30))}</td>`).join('')}
+      ${cells.length > 8 ? '<td>...</td>' : ''}
+    </tr>`;
+  }).join('')}</table></div>`;
+
+  document.getElementById('rawPreviewContent').innerHTML = html;
+}
+
+function parseCSVWithHeaderRow() {
+  const headerRow = parseInt(document.getElementById('headerRowSelect').value);
+
+  if (csvRawLines.length < headerRow + 1) {
+    alert('Not enough rows in CSV for selected header row');
+    return;
+  }
+
+  csvHeaders = parseCSVLine(csvRawLines[headerRow - 1]);
+  csvData = csvRawLines.slice(headerRow).map(line => parseCSVLine(line));
+}
+
+// Update preview when header row changes
+document.getElementById('headerRowSelect').addEventListener('change', () => {
+  if (csvRawLines.length > 0) {
+    renderRawPreview();
+    parseCSVWithHeaderRow();
+  }
+});
+
+function parseCSVLine(line) {
+  const result = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    const next = line[i + 1];
+
+    if (inQuotes) {
+      if (char === '"' && next === '"') {
+        current += '"';
+        i++;
+      } else if (char === '"') {
+        inQuotes = false;
+      } else {
+        current += char;
+      }
+    } else {
+      if (char === '"') {
+        inQuotes = true;
+      } else if (char === ',') {
+        result.push(current.trim());
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+  }
+  result.push(current.trim());
+  return result;
+}
+
+// Import navigation buttons
+document.getElementById('importNextBtn').addEventListener('click', showMappingStep);
+document.getElementById('importBackBtn').addEventListener('click', showUploadStep);
+document.getElementById('importRunBtn').addEventListener('click', runImport);
+document.getElementById('importDoneBtn').addEventListener('click', () => closeModal(importModal));
+document.getElementById('importCancelBtn').addEventListener('click', () => closeModal(importModal));
+
+function showUploadStep() {
+  document.getElementById('importStep1').hidden = false;
+  document.getElementById('importStep2').hidden = true;
+  document.getElementById('importStep3').hidden = true;
+
+  document.getElementById('importNextBtn').hidden = false;
+  document.getElementById('importBackBtn').hidden = true;
+  document.getElementById('importRunBtn').hidden = true;
+}
+
+function showMappingStep() {
+  const importType = document.getElementById('importType').value;
+  const targetFields = importType === 'receipts'
+    ? ['job_name', 'store_location', 'receipt_date', 'notes']
+    : ['item_name', 'quantity', 'purchase_date', 'amount', 'job_name', 'store_location'];
+
+  const container = document.getElementById('mappingContainer');
+  container.innerHTML = targetFields.map(field => {
+    const options = csvHeaders.map((h, i) => {
+      const selected = autoMatchField(h, field) ? 'selected' : '';
+      return `<option value="${i}" ${selected}>${escapeHtml(h)}</option>`;
+    }).join('');
+
+    return `
+      <div class="mapping-row">
+        <label>${formatFieldName(field)}</label>
+        <select data-field="${field}">
+          <option value="">-- Skip --</option>
+          ${options}
+        </select>
+      </div>
+    `;
+  }).join('');
+
+  // Show unit price options for items import
+  const unitPriceOptions = document.getElementById('unitPriceOptions');
+  if (importType === 'items') {
+    unitPriceOptions.hidden = false;
+
+    // Populate unit price column select
+    const unitPriceSelect = document.getElementById('unitPriceSelect');
+    unitPriceSelect.innerHTML = `<option value="">-- Select column --</option>` +
+      csvHeaders.map((h, i) => {
+        const selected = autoMatchField(h, 'unit_price') ? 'selected' : '';
+        return `<option value="${i}" ${selected}>${escapeHtml(h)}</option>`;
+      }).join('');
+
+    updateUnitPriceVisibility();
+  } else {
+    unitPriceOptions.hidden = true;
+  }
+
+  // Show preview
+  renderImportPreview();
+
+  document.getElementById('importStep1').hidden = true;
+  document.getElementById('importStep2').hidden = false;
+
+  document.getElementById('importNextBtn').hidden = true;
+  document.getElementById('importBackBtn').hidden = false;
+  document.getElementById('importRunBtn').hidden = false;
+}
+
+function autoMatchField(header, field) {
+  const h = header.toLowerCase().replace(/[_\s-]/g, '');
+  const f = field.toLowerCase().replace(/[_\s-]/g, '');
+
+  // Direct match
+  if (h === f) return true;
+
+  // Common aliases
+  const aliases = {
+    'item_name': ['item', 'itemname', 'description', 'product', 'productname', 'name', 'desc'],
+    'quantity': ['qty', 'quantity', 'count', 'units'],
+    'purchase_date': ['date', 'purchasedate', 'orderdate', 'transactiondate'],
+    'amount': ['total', 'amount', 'price', 'extendedprice', 'extendedretail', 'linetotal', 'subtotal'],
+    'job_name': ['job', 'jobname', 'project', 'projectname'],
+    'store_location': ['store', 'storelocation', 'location', 'vendor'],
+    'unit_price': ['unitprice', 'unit', 'eachprice', 'priceperunit', 'retail', 'discountedprice']
+  };
+
+  return aliases[field]?.includes(h) || false;
+}
+
+function updateUnitPriceVisibility() {
+  const calcUnitPrice = document.getElementById('calcUnitPrice').checked;
+  document.getElementById('unitPriceMapping').hidden = calcUnitPrice;
+  useCalculatedUnitPrice = calcUnitPrice;
+}
+
+document.getElementById('calcUnitPrice').addEventListener('change', updateUnitPriceVisibility);
+
+function formatFieldName(field) {
+  return field.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function renderImportPreview() {
+  const previewRows = csvData.slice(0, 3);
+  const table = document.getElementById('importPreviewTable');
+
+  table.innerHTML = `
+    <table>
+      <thead>
+        <tr>${csvHeaders.map(h => `<th>${escapeHtml(h)}</th>`).join('')}</tr>
+      </thead>
+      <tbody>
+        ${previewRows.map(row => `<tr>${row.map(cell => `<td>${escapeHtml(cell)}</td>`).join('')}</tr>`).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+async function runImport() {
+  const importType = document.getElementById('importType').value;
+  const mappingSelects = document.querySelectorAll('#mappingContainer select');
+
+  headerMapping = {};
+  mappingSelects.forEach(select => {
+    if (select.value !== '') {
+      headerMapping[select.dataset.field] = parseInt(select.value);
+    }
+  });
+
+  // Get unit price column if selected
+  const unitPriceColIdx = document.getElementById('unitPriceSelect').value;
+  const useUnitPriceCol = importType === 'items' && !useCalculatedUnitPrice && unitPriceColIdx !== '';
+
+  // Validate required fields
+  let requiredFields;
+  if (importType === 'receipts') {
+    requiredFields = ['job_name', 'receipt_date'];
+  } else if (useUnitPriceCol) {
+    // If using unit price column, amount is not required (we'll calculate it)
+    requiredFields = ['item_name', 'purchase_date'];
+  } else {
+    requiredFields = ['item_name', 'purchase_date', 'amount'];
+  }
+
+  const missing = requiredFields.filter(f => headerMapping[f] === undefined);
+  if (missing.length) {
+    alert(`Please map required fields: ${missing.map(formatFieldName).join(', ')}`);
+    return;
+  }
+
+  // If using unit price column, validate it's selected
+  if (importType === 'items' && !useCalculatedUnitPrice && unitPriceColIdx === '') {
+    alert('Please select a Unit Price column or check "Calculate unit price from Total ÷ Quantity"');
+    return;
+  }
+
+  document.getElementById('importRunBtn').disabled = true;
+  document.getElementById('importRunBtn').textContent = 'Importing...';
+
+  let success = 0;
+  let failed = 0;
+  const errors = [];
+
+  // Upload CSV file first to get file_path
+  let uploadedFile = null;
+  if (csvFile) {
+    try {
+      const uploadFormData = new FormData();
+      uploadFormData.append('file', csvFile);
+      const uploadRes = await fetch(`${API}/upload-csv`, {
+        method: 'POST',
+        body: uploadFormData
+      });
+      if (uploadRes.ok) {
+        uploadedFile = await uploadRes.json();
+      }
+    } catch (err) {
+      console.error('Failed to upload CSV:', err);
+    }
+  }
+
+  if (importType === 'receipts') {
+    for (const row of csvData) {
+      try {
+        const formData = new FormData();
+        formData.append('job_name', row[headerMapping.job_name] || '');
+        formData.append('store_location', row[headerMapping.store_location] ?? '');
+        formData.append('receipt_date', row[headerMapping.receipt_date] || '');
+        formData.append('notes', row[headerMapping.notes] ?? '');
+
+        // Include CSV file reference for first receipt only (to avoid duplicates)
+        if (uploadedFile && success === 0) {
+          formData.append('imported_file_path', uploadedFile.file_path);
+          formData.append('imported_file_type', uploadedFile.file_type);
+        }
+
+        await saveReceipt(formData, null);
+        success++;
+      } catch (err) {
+        failed++;
+        errors.push(`Row ${success + failed}: ${err.message}`);
+      }
+    }
+  } else {
+    // Items import - group by job_name + store_location + date to create receipts
+    const receiptMap = new Map();
+
+    for (const row of csvData) {
+      const jobName = row[headerMapping.job_name] || 'Imported';
+      const storeLocation = row[headerMapping.store_location] ?? '';
+      const date = row[headerMapping.purchase_date] || new Date().toISOString().split('T')[0];
+      const key = `${jobName}|${storeLocation}|${date}`;
+
+      if (!receiptMap.has(key)) {
+        receiptMap.set(key, { jobName, storeLocation, date, items: [] });
+      }
+
+      const quantity = parseInt(row[headerMapping.quantity]) || 1;
+      let amount;
+
+      if (useUnitPriceCol) {
+        // Calculate amount from unit price * quantity
+        const unitPrice = parseCurrency(row[unitPriceColIdx]);
+        amount = unitPrice * quantity;
+      } else {
+        amount = parseCurrency(row[headerMapping.amount]);
+      }
+
+      receiptMap.get(key).items.push({
+        item_name: row[headerMapping.item_name] || '',
+        quantity,
+        purchase_date: date,
+        amount
+      });
+    }
+
+    for (const [, receipt] of receiptMap) {
+      try {
+        const formData = new FormData();
+        formData.append('job_name', receipt.jobName);
+        formData.append('store_location', receipt.storeLocation);
+        formData.append('receipt_date', receipt.date);
+        formData.append('notes', '');
+
+        // Include CSV file reference for all receipts from this import
+        if (uploadedFile) {
+          formData.append('imported_file_path', uploadedFile.file_path);
+          formData.append('imported_file_type', uploadedFile.file_type);
+        }
+
+        const newReceipt = await saveReceipt(formData, null);
+
+        for (const item of receipt.items) {
+          try {
+            await saveItem(newReceipt.id, item, null);
+            success++;
+          } catch (err) {
+            failed++;
+            errors.push(`Item "${item.item_name}": ${err.message}`);
+          }
+        }
+      } catch (err) {
+        failed += receipt.items.length;
+        errors.push(`Receipt "${receipt.jobName}": ${err.message}`);
+      }
+    }
+  }
+
+  // Show results
+  document.getElementById('importStep2').hidden = true;
+  document.getElementById('importStep3').hidden = false;
+
+  document.getElementById('importBackBtn').hidden = true;
+  document.getElementById('importRunBtn').hidden = true;
+  document.getElementById('importDoneBtn').hidden = false;
+  document.getElementById('importCancelBtn').hidden = true;
+
+  document.getElementById('importResults').innerHTML = `
+    <div class="import-success">Successfully imported: ${success}</div>
+    ${failed ? `<div class="import-failed">Failed: ${failed}</div>` : ''}
+    ${errors.length ? `<div class="import-errors"><strong>Errors:</strong><ul>${errors.slice(0, 10).map(e => `<li>${escapeHtml(e)}</li>`).join('')}</ul>${errors.length > 10 ? `<p>...and ${errors.length - 10} more</p>` : ''}</div>` : ''}
+  `;
+
+  document.getElementById('importRunBtn').disabled = false;
+  document.getElementById('importRunBtn').textContent = 'Import';
+
+  // Reload data
+  loadReceipts();
 }

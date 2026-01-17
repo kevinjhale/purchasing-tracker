@@ -9,7 +9,17 @@
 <body>
   <header>
     <h1>Receipt Tracker</h1>
-    <button id="newReceiptBtn" class="btn btn-primary">+ New Receipt</button>
+    <div class="header-actions">
+      <div class="dropdown">
+        <button class="btn btn-secondary" id="exportBtn">Export CSV</button>
+        <div class="dropdown-menu" id="exportMenu" hidden>
+          <button class="dropdown-item" id="exportReceipts">Export Receipts</button>
+          <button class="dropdown-item" id="exportItems">Export Items</button>
+        </div>
+      </div>
+      <button id="importBtn" class="btn btn-secondary">Import CSV</button>
+      <button id="newReceiptBtn" class="btn btn-primary">+ New Receipt</button>
+    </div>
   </header>
 
   <main>
@@ -89,14 +99,51 @@
           </div>
 
           <div class="form-group">
-            <label for="receiptFile">Receipt Image/PDF</label>
-            <input type="file" id="receiptFile" accept="image/jpeg,image/png,application/pdf">
+            <label for="receiptFile">Receipt Image/PDF/CSV</label>
+            <input type="file" id="receiptFile" accept="image/jpeg,image/png,application/pdf,.csv,text/csv">
             <div id="currentFile" class="current-file"></div>
+          </div>
+
+          <!-- CSV Import Options (shown when CSV selected) -->
+          <div id="csvImportOptions" class="csv-import-section" hidden>
+            <div class="csv-import-header">
+              <h4>CSV Import Options</h4>
+            </div>
+            <div class="form-group">
+              <label for="modalHeaderRowSelect">Header row:</label>
+              <select id="modalHeaderRowSelect">
+                <option value="1">Row 1</option>
+                <option value="2">Row 2</option>
+                <option value="3">Row 3</option>
+                <option value="4">Row 4</option>
+                <option value="5">Row 5</option>
+                <option value="6">Row 6</option>
+                <option value="7">Row 7</option>
+                <option value="8">Row 8</option>
+                <option value="9">Row 9</option>
+                <option value="10">Row 10</option>
+              </select>
+            </div>
+            <div id="modalRawPreview" class="raw-preview" hidden>
+              <h4>CSV Preview</h4>
+              <div id="modalRawPreviewContent"></div>
+            </div>
+            <div id="modalMappingContainer" class="mapping-container"></div>
+            <div id="modalUnitPriceOptions" class="unit-price-options" hidden>
+              <label class="checkbox-label">
+                <input type="checkbox" id="modalCalcUnitPrice" checked>
+                Calculate unit price from Total ÷ Quantity
+              </label>
+              <div id="modalUnitPriceMapping" class="mapping-row" hidden>
+                <label>Unit Price Column</label>
+                <select id="modalUnitPriceSelect"></select>
+              </div>
+            </div>
           </div>
 
           <div class="form-actions">
             <button type="button" class="btn btn-secondary" id="cancelBtn">Cancel</button>
-            <button type="submit" class="btn btn-primary">Save Receipt</button>
+            <button type="submit" class="btn btn-primary" id="saveReceiptBtn">Save Receipt</button>
           </div>
         </form>
 
@@ -188,6 +235,85 @@
         <button class="close-btn" aria-label="Close">&times;</button>
       </div>
       <div id="previewContent" class="preview-content"></div>
+    </div>
+  </div>
+
+  <!-- Import CSV Modal -->
+  <div id="importModal" class="modal" hidden>
+    <div class="modal-content modal-wide">
+      <div class="modal-header">
+        <h2>Import CSV</h2>
+        <button class="close-btn" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <!-- Step 1: File Upload -->
+        <div id="importStep1">
+          <div class="import-options-row">
+            <div class="import-type-select">
+              <label>Import type:</label>
+              <select id="importType">
+                <option value="receipts">Receipts</option>
+                <option value="items">Items (with receipt info)</option>
+              </select>
+            </div>
+            <div class="import-type-select">
+              <label>Header row:</label>
+              <select id="headerRowSelect">
+                <option value="1">Row 1</option>
+                <option value="2">Row 2</option>
+                <option value="3">Row 3</option>
+                <option value="4">Row 4</option>
+                <option value="5">Row 5</option>
+                <option value="6">Row 6</option>
+                <option value="7">Row 7</option>
+                <option value="8">Row 8</option>
+                <option value="9">Row 9</option>
+                <option value="10">Row 10</option>
+              </select>
+            </div>
+          </div>
+          <div class="file-drop-zone" id="csvDropZone">
+            <p>Drag & drop a CSV file here, or click to select</p>
+            <input type="file" id="csvFileInput" accept=".csv" hidden>
+          </div>
+          <div id="rawPreview" class="raw-preview" hidden>
+            <h4>Raw CSV Preview (first 10 rows)</h4>
+            <div id="rawPreviewContent"></div>
+          </div>
+        </div>
+
+        <!-- Step 2: Header Mapping -->
+        <div id="importStep2" hidden>
+          <p class="import-info">Map your CSV columns to the app fields:</p>
+          <div id="mappingContainer" class="mapping-container"></div>
+          <div id="unitPriceOptions" class="unit-price-options" hidden>
+            <label class="checkbox-label">
+              <input type="checkbox" id="calcUnitPrice" checked>
+              Calculate unit price from Total ÷ Quantity
+            </label>
+            <div id="unitPriceMapping" class="mapping-row" hidden>
+              <label>Unit Price Column</label>
+              <select id="unitPriceSelect"></select>
+            </div>
+          </div>
+          <div class="import-preview">
+            <h4>Preview (first 3 rows)</h4>
+            <div id="importPreviewTable" class="table-container"></div>
+          </div>
+        </div>
+
+        <!-- Step 3: Import Results -->
+        <div id="importStep3" hidden>
+          <div id="importResults" class="import-results"></div>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-secondary" id="importCancelBtn">Cancel</button>
+        <button type="button" class="btn btn-secondary" id="importBackBtn" hidden>Back</button>
+        <button type="button" class="btn btn-primary" id="importNextBtn" hidden>Next</button>
+        <button type="button" class="btn btn-primary" id="importRunBtn" hidden>Import</button>
+        <button type="button" class="btn btn-primary" id="importDoneBtn" hidden>Done</button>
+      </div>
     </div>
   </div>
 
