@@ -38,10 +38,13 @@
           <thead>
             <tr>
               <th data-sort="item_name" class="sortable">Item <span class="sort-icon"></span></th>
+              <th data-sort="quantity" class="sortable">Qty <span class="sort-icon"></span></th>
               <th data-sort="purchase_date" class="sortable">Date <span class="sort-icon"></span></th>
-              <th data-sort="amount" class="sortable">Amount <span class="sort-icon"></span></th>
+              <th data-sort="amount" class="sortable">Total <span class="sort-icon"></span></th>
+              <th data-sort="unit_price" class="sortable">Unit <span class="sort-icon"></span></th>
               <th data-sort="store_location" class="sortable">Store <span class="sort-icon"></span></th>
               <th data-sort="job_name" class="sortable">Job <span class="sort-icon"></span></th>
+              <th>Receipt</th>
             </tr>
           </thead>
           <tbody id="allItemsBody"></tbody>
@@ -110,8 +113,9 @@
           <input type="hidden" id="itemId">
           <div class="item-inputs">
             <input type="text" id="itemName" placeholder="Item name" required>
+            <input type="number" id="itemQty" placeholder="Qty" min="1" value="1" required>
             <input type="date" id="itemDate" required>
-            <input type="number" id="itemAmount" placeholder="Amount" step="0.01" required>
+            <input type="number" id="itemAmount" placeholder="Total $" step="0.01" required>
             <button type="submit" class="btn btn-primary btn-sm" id="addItemBtn">Add</button>
           </div>
         </form>
@@ -119,17 +123,19 @@
           <thead>
             <tr>
               <th>Item</th>
+              <th>Qty</th>
               <th>Date</th>
-              <th>Amount</th>
+              <th>Total</th>
+              <th>Unit</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody id="itemsTableBody"></tbody>
           <tfoot>
             <tr>
-              <td colspan="2"><strong>Total</strong></td>
+              <td colspan="3"><strong>Total</strong></td>
               <td id="itemsTotal"><strong>$0.00</strong></td>
-              <td></td>
+              <td colspan="2"></td>
             </tr>
           </tfoot>
         </table>

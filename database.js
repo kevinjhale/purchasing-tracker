@@ -31,9 +31,16 @@ function init() {
       item_name TEXT NOT NULL,
       purchase_date DATE NOT NULL,
       amount DECIMAL(10,2) NOT NULL,
+      quantity INTEGER DEFAULT 1,
       FOREIGN KEY (receipt_id) REFERENCES receipts(id) ON DELETE CASCADE
     );
   `);
+
+  // Migration: add quantity column if it doesn't exist
+  const columns = db.prepare("PRAGMA table_info(line_items)").all();
+  if (!columns.find(c => c.name === 'quantity')) {
+    db.exec("ALTER TABLE line_items ADD COLUMN quantity INTEGER DEFAULT 1");
+  }
 }
 
 // Receipt CRUD
@@ -99,20 +106,20 @@ function deleteReceipt(id) {
 }
 
 // Line Item CRUD
-function addLineItem(receipt_id, { item_name, purchase_date, amount }) {
+function addLineItem(receipt_id, { item_name, purchase_date, amount, quantity = 1 }) {
   const result = db.prepare(`
-    INSERT INTO line_items (receipt_id, item_name, purchase_date, amount)
-    VALUES (?, ?, ?, ?)
-  `).run(receipt_id, item_name, purchase_date, amount);
+    INSERT INTO line_items (receipt_id, item_name, purchase_date, amount, quantity)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(receipt_id, item_name, purchase_date, amount, quantity);
 
   return db.prepare('SELECT * FROM line_items WHERE id = ?').get(result.lastInsertRowid);
 }
 
-function updateLineItem(id, { item_name, purchase_date, amount }) {
+function updateLineItem(id, { item_name, purchase_date, amount, quantity = 1 }) {
   db.prepare(`
-    UPDATE line_items SET item_name = ?, purchase_date = ?, amount = ?
+    UPDATE line_items SET item_name = ?, purchase_date = ?, amount = ?, quantity = ?
     WHERE id = ?
-  `).run(item_name, purchase_date, amount, id);
+  `).run(item_name, purchase_date, amount, quantity, id);
 
   return db.prepare('SELECT * FROM line_items WHERE id = ?').get(id);
 }
@@ -132,6 +139,7 @@ function getAllItems() {
       li.item_name,
       li.purchase_date,
       li.amount,
+      li.quantity,
       li.receipt_id,
       r.job_name,
       r.store_location

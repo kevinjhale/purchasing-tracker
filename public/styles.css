@@ -344,7 +344,13 @@ form {
 
 .item-inputs input[type="number"] {
   flex: 1;
-  min-width: 80px;
+  min-width: 70px;
+}
+
+.item-inputs input#itemQty {
+  flex: 0;
+  width: 60px;
+  min-width: 60px;
 }
 
 .items-table {

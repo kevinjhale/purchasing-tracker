@@ -125,7 +125,7 @@ app.delete('/api/receipts/:id', (req, res) => {
 // Add line item
 app.post('/api/receipts/:id/items', (req, res) => {
   try {
-    const { item_name, purchase_date, amount } = req.body;
+    const { item_name, purchase_date, amount, quantity } = req.body;
     if (!item_name || !purchase_date || amount === undefined) {
       return res.status(400).json({ error: 'Item name, date, and amount are required' });
     }
@@ -133,7 +133,7 @@ app.post('/api/receipts/:id/items', (req, res) => {
     const receipt = db.getReceiptById(req.params.id);
     if (!receipt) return res.status(404).json({ error: 'Receipt not found' });
 
-    const item = db.addLineItem(req.params.id, { item_name, purchase_date, amount });
+    const item = db.addLineItem(req.params.id, { item_name, purchase_date, amount, quantity: quantity || 1 });
     res.status(201).json(item);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -143,12 +143,12 @@ app.post('/api/receipts/:id/items', (req, res) => {
 // Update line item
 app.put('/api/items/:id', (req, res) => {
   try {
-    const { item_name, purchase_date, amount } = req.body;
+    const { item_name, purchase_date, amount, quantity } = req.body;
     if (!item_name || !purchase_date || amount === undefined) {
       return res.status(400).json({ error: 'Item name, date, and amount are required' });
     }
 
-    const item = db.updateLineItem(req.params.id, { item_name, purchase_date, amount });
+    const item = db.updateLineItem(req.params.id, { item_name, purchase_date, amount, quantity: quantity || 1 });
     if (!item) return res.status(404).json({ error: 'Item not found' });
     res.json(item);
   } catch (err) {

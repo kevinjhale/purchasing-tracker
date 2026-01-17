@@ -176,18 +176,20 @@ function getFilteredAndSortedItems() {
 
   // Sort
   items.sort((a, b) => {
-    let aVal = a[sortColumn];
-    let bVal = b[sortColumn];
+    let aVal, bVal;
 
-    if (sortColumn === 'amount') {
-      aVal = parseFloat(aVal);
-      bVal = parseFloat(bVal);
+    if (sortColumn === 'unit_price') {
+      aVal = parseFloat(a.amount) / (a.quantity || 1);
+      bVal = parseFloat(b.amount) / (b.quantity || 1);
+    } else if (sortColumn === 'amount' || sortColumn === 'quantity') {
+      aVal = parseFloat(a[sortColumn]) || 0;
+      bVal = parseFloat(b[sortColumn]) || 0;
     } else if (sortColumn === 'purchase_date') {
-      aVal = new Date(aVal);
-      bVal = new Date(bVal);
+      aVal = new Date(a[sortColumn]);
+      bVal = new Date(b[sortColumn]);
     } else {
-      aVal = (aVal || '').toLowerCase();
-      bVal = (bVal || '').toLowerCase();
+      aVal = (a[sortColumn] || '').toLowerCase();
+      bVal = (b[sortColumn] || '').toLowerCase();
     }
 
     if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
@@ -298,20 +300,29 @@ function renderAllItems() {
   });
 
   if (items.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--gray-600); padding: 2rem;">No items found</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--gray-600); padding: 2rem;">No items found</td></tr>';
     statsEl.innerHTML = '';
     return;
   }
 
-  tbody.innerHTML = items.map(item => `
-    <tr>
-      <td>${escapeHtml(item.item_name)}</td>
-      <td>${formatDate(item.purchase_date)}</td>
-      <td>$${parseFloat(item.amount).toFixed(2)}</td>
-      <td>${escapeHtml(item.store_location || '-')}</td>
-      <td>${escapeHtml(item.job_name)}</td>
-    </tr>
-  `).join('');
+  tbody.innerHTML = items.map(item => {
+    const qty = item.quantity || 1;
+    const unitPrice = parseFloat(item.amount) / qty;
+    return `
+      <tr>
+        <td>${escapeHtml(item.item_name)}</td>
+        <td>${qty}</td>
+        <td>${formatDate(item.purchase_date)}</td>
+        <td>$${parseFloat(item.amount).toFixed(2)}</td>
+        <td>$${unitPrice.toFixed(2)}</td>
+        <td>${escapeHtml(item.store_location || '-')}</td>
+        <td>${escapeHtml(item.job_name)}</td>
+        <td>
+          <button class="btn btn-sm btn-secondary" onclick="goToReceipt(${item.receipt_id})">View</button>
+        </td>
+      </tr>
+    `;
+  }).join('');
 
   // Stats
   const total = items.reduce((sum, item) => sum + parseFloat(item.amount), 0);
@@ -355,31 +366,37 @@ function renderItems(receipt) {
   const totalEl = document.getElementById('itemsTotal');
 
   if (receipt.items.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--gray-600)">No items yet</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--gray-600)">No items yet</td></tr>';
     totalEl.innerHTML = '<strong>$0.00</strong>';
     return;
   }
 
-  tbody.innerHTML = receipt.items.map(item => `
-    <tr data-id="${item.id}">
-      <td>${escapeHtml(item.item_name)}</td>
-      <td>${formatDate(item.purchase_date)}</td>
-      <td>$${parseFloat(item.amount).toFixed(2)}</td>
-      <td>
-        <button class="btn-icon" onclick="editItem(${item.id})" title="Edit">
-          <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M11 4H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/>
-            <path d="M18.5 2.5a2.121 2.121 0 0 1 0 3L12 12l-4 1 1-4 6.5-6.5a2.121 2.121 0 0 1 3 0z"/>
-          </svg>
-        </button>
-        <button class="btn-icon" onclick="confirmDelete(${item.id}, 'item')" title="Delete">
-          <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-          </svg>
-        </button>
-      </td>
-    </tr>
-  `).join('');
+  tbody.innerHTML = receipt.items.map(item => {
+    const qty = item.quantity || 1;
+    const unitPrice = parseFloat(item.amount) / qty;
+    return `
+      <tr data-id="${item.id}">
+        <td>${escapeHtml(item.item_name)}</td>
+        <td>${qty}</td>
+        <td>${formatDate(item.purchase_date)}</td>
+        <td>$${parseFloat(item.amount).toFixed(2)}</td>
+        <td>$${unitPrice.toFixed(2)}</td>
+        <td>
+          <button class="btn-icon" onclick="editItem(${item.id})" title="Edit">
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M11 4H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/>
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 0 3L12 12l-4 1 1-4 6.5-6.5a2.121 2.121 0 0 1 3 0z"/>
+            </svg>
+          </button>
+          <button class="btn-icon" onclick="confirmDelete(${item.id}, 'item')" title="Delete">
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+            </svg>
+          </button>
+        </td>
+      </tr>
+    `;
+  }).join('');
 
   const total = receipt.items.reduce((sum, item) => sum + parseFloat(item.amount), 0);
   totalEl.innerHTML = `<strong>$${total.toFixed(2)}</strong>`;
@@ -427,10 +444,10 @@ function openItemsModal(receiptId) {
 
   document.getElementById('itemReceiptId').value = receiptId;
   document.getElementById('itemId').value = '';
-  document.getElementById('itemDate').value = receipt.receipt_date;
   document.getElementById('addItemBtn').textContent = 'Add';
   itemForm.reset();
   document.getElementById('itemDate').value = receipt.receipt_date;
+  document.getElementById('itemQty').value = 1;
 
   renderItems(receipt);
   openModal(itemsModal);
@@ -491,7 +508,8 @@ async function handleItemSubmit(e) {
   const data = {
     item_name: document.getElementById('itemName').value,
     purchase_date: document.getElementById('itemDate').value,
-    amount: parseFloat(document.getElementById('itemAmount').value)
+    amount: parseFloat(document.getElementById('itemAmount').value),
+    quantity: parseInt(document.getElementById('itemQty').value) || 1
   };
 
   try {
@@ -505,6 +523,7 @@ async function handleItemSubmit(e) {
     document.getElementById('itemId').value = '';
     document.getElementById('itemName').value = '';
     document.getElementById('itemAmount').value = '';
+    document.getElementById('itemQty').value = 1;
     document.getElementById('addItemBtn').textContent = 'Add';
     document.getElementById('itemName').focus();
   } catch (err) {
@@ -547,10 +566,16 @@ function editItem(itemId) {
 
   document.getElementById('itemId').value = item.id;
   document.getElementById('itemName').value = item.item_name;
+  document.getElementById('itemQty').value = item.quantity || 1;
   document.getElementById('itemDate').value = item.purchase_date;
   document.getElementById('itemAmount').value = item.amount;
   document.getElementById('addItemBtn').textContent = 'Update';
   document.getElementById('itemName').focus();
+}
+
+function goToReceipt(receiptId) {
+  switchTab('receipts');
+  openItemsModal(receiptId);
 }
 
 // Utilities
