@@ -362,7 +362,14 @@ function renderAllItems() {
 
 function getThumbnail(receipt) {
   if (!receipt.file_path) {
-    return '<div class="receipt-thumbnail"></div>';
+    return `<div class="receipt-thumbnail imported">
+      <svg class="imported-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="7 10 12 15 17 10"/>
+        <line x1="12" y1="15" x2="12" y2="3"/>
+      </svg>
+      <span class="imported-label">Imported</span>
+    </div>`;
   }
 
   if (receipt.file_type === 'application/pdf') {
@@ -373,7 +380,15 @@ function getThumbnail(receipt) {
   const csvTypes = ['text/csv', 'application/csv', 'application/vnd.ms-excel', 'text/plain'];
   const isCSV = csvTypes.includes(receipt.file_type) || receipt.file_path.toLowerCase().endsWith('.csv');
   if (isCSV) {
-    return `<div class="receipt-thumbnail csv" onclick="downloadFile('${receipt.file_path}')">CSV</div>`;
+    return `<div class="receipt-thumbnail csv" onclick="downloadFile('${receipt.file_path}')">
+      <svg class="csv-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+        <polyline points="14 2 14 8 20 8"/>
+        <line x1="8" y1="13" x2="16" y2="13"/>
+        <line x1="8" y1="17" x2="16" y2="17"/>
+      </svg>
+      <span class="csv-label">CSV</span>
+    </div>`;
   }
 
   return `<img class="receipt-thumbnail" src="/uploads/${receipt.file_path}" alt="Receipt" onclick="openPreview('${receipt.file_path}', 'image')">`;
