@@ -1629,10 +1629,15 @@ async function showPriceHistory(itemName) {
   // Render table
   renderPriceHistoryTable(matchingItems);
 
-  // Draw chart
-  drawPriceChart(matchingItems);
-
+  // Open modal first, then draw chart after it's visible
   openModal(priceHistoryModal);
+
+  // Wait for modal to be visible before drawing chart
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      drawPriceChart(matchingItems);
+    });
+  });
 }
 
 function renderPriceStats(items) {
