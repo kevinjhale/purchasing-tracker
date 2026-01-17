@@ -795,6 +795,71 @@ form {
   margin-bottom: 1rem;
 }
 
+/* Price History Modal */
+.price-chart-container {
+  background: white;
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius);
+  padding: 1rem;
+  margin-bottom: 1rem;
+  height: 300px;
+}
+
+#priceChart {
+  width: 100%;
+  height: 100%;
+}
+
+.price-history-stats {
+  display: flex;
+  gap: 2rem;
+  margin-bottom: 1rem;
+  padding: 1rem;
+  background: var(--gray-100);
+  border-radius: var(--radius);
+  flex-wrap: wrap;
+}
+
+.price-history-stats .stat {
+  display: flex;
+  flex-direction: column;
+}
+
+.price-history-stats .stat-label {
+  font-size: 0.75rem;
+  color: var(--gray-600);
+  text-transform: uppercase;
+}
+
+.price-history-stats .stat-value {
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.price-history-stats .stat-value.price-up {
+  color: var(--danger);
+}
+
+.price-history-stats .stat-value.price-down {
+  color: #16a34a;
+}
+
+.price-history-table {
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+/* Clickable item names */
+.item-name-link {
+  color: var(--primary);
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.item-name-link:hover {
+  text-decoration: underline;
+}
+
 .file-drop-zone {
   border: 2px dashed var(--gray-300);
   border-radius: var(--radius);

@@ -321,7 +321,7 @@ function renderAllItems() {
     const unitPrice = parseFloat(item.amount) / qty;
     return `
       <tr>
-        <td>${escapeHtml(item.item_name)}</td>
+        <td><span class="item-name-link" onclick="showPriceHistory('${escapeHtml(item.item_name).replace(/'/g, "\\'")}')">${escapeHtml(item.item_name)}</span></td>
         <td>${qty}</td>
         <td>${formatDate(item.purchase_date)}</td>
         <td>$${parseFloat(item.amount).toFixed(2)}</td>
@@ -401,7 +401,7 @@ function renderItems(receipt) {
     const unitPrice = parseFloat(item.amount) / qty;
     return `
       <tr data-id="${item.id}">
-        <td>${escapeHtml(item.item_name)}</td>
+        <td><span class="item-name-link" onclick="showPriceHistory('${escapeHtml(item.item_name).replace(/'/g, "\\'")}')">${escapeHtml(item.item_name)}</span></td>
         <td>${qty}</td>
         <td>${formatDate(item.purchase_date)}</td>
         <td>$${parseFloat(item.amount).toFixed(2)}</td>
@@ -1584,4 +1584,236 @@ async function runImport() {
 
   // Reload data
   loadReceipts();
+}
+
+// ============================================
+// Price History
+// ============================================
+
+const priceHistoryModal = document.getElementById('priceHistoryModal');
+
+async function showPriceHistory(itemName) {
+  // Get all items with this name (case-insensitive)
+  let items = allItems;
+
+  // If allItems is empty, fetch them
+  if (!items.length) {
+    try {
+      const res = await fetch(`${API}/items`);
+      items = await res.json();
+    } catch (err) {
+      console.error('Failed to load items:', err);
+      return;
+    }
+  }
+
+  // Filter items matching this name
+  const matchingItems = items.filter(i =>
+    i.item_name.toLowerCase() === itemName.toLowerCase()
+  );
+
+  if (matchingItems.length === 0) {
+    alert('No price history found for this item');
+    return;
+  }
+
+  // Sort by date
+  matchingItems.sort((a, b) => new Date(a.purchase_date) - new Date(b.purchase_date));
+
+  // Update modal title
+  document.getElementById('priceHistoryTitle').textContent = `Price History: ${itemName}`;
+
+  // Render stats
+  renderPriceStats(matchingItems);
+
+  // Render table
+  renderPriceHistoryTable(matchingItems);
+
+  // Draw chart
+  drawPriceChart(matchingItems);
+
+  openModal(priceHistoryModal);
+}
+
+function renderPriceStats(items) {
+  const unitPrices = items.map(i => parseFloat(i.amount) / (i.quantity || 1));
+  const avgPrice = unitPrices.reduce((a, b) => a + b, 0) / unitPrices.length;
+  const minPrice = Math.min(...unitPrices);
+  const maxPrice = Math.max(...unitPrices);
+  const firstPrice = unitPrices[0];
+  const lastPrice = unitPrices[unitPrices.length - 1];
+  const priceChange = lastPrice - firstPrice;
+  const priceChangePercent = firstPrice > 0 ? ((priceChange / firstPrice) * 100) : 0;
+
+  const changeClass = priceChange > 0 ? 'price-up' : (priceChange < 0 ? 'price-down' : '');
+  const changeSign = priceChange > 0 ? '+' : '';
+
+  document.getElementById('priceHistoryStats').innerHTML = `
+    <div class="stat">
+      <span class="stat-label">Purchases</span>
+      <span class="stat-value">${items.length}</span>
+    </div>
+    <div class="stat">
+      <span class="stat-label">Avg Unit Price</span>
+      <span class="stat-value">$${avgPrice.toFixed(2)}</span>
+    </div>
+    <div class="stat">
+      <span class="stat-label">Low</span>
+      <span class="stat-value">$${minPrice.toFixed(2)}</span>
+    </div>
+    <div class="stat">
+      <span class="stat-label">High</span>
+      <span class="stat-value">$${maxPrice.toFixed(2)}</span>
+    </div>
+    <div class="stat">
+      <span class="stat-label">Price Change</span>
+      <span class="stat-value ${changeClass}">${changeSign}$${priceChange.toFixed(2)} (${changeSign}${priceChangePercent.toFixed(1)}%)</span>
+    </div>
+  `;
+}
+
+function renderPriceHistoryTable(items) {
+  const tbody = document.getElementById('priceHistoryBody');
+
+  tbody.innerHTML = items.map(item => {
+    const qty = item.quantity || 1;
+    const unitPrice = parseFloat(item.amount) / qty;
+    return `
+      <tr>
+        <td>${formatDate(item.purchase_date)}</td>
+        <td>${escapeHtml(item.store_location || '-')}</td>
+        <td>${escapeHtml(item.job_name)}</td>
+        <td>${qty}</td>
+        <td>$${parseFloat(item.amount).toFixed(2)}</td>
+        <td>$${unitPrice.toFixed(2)}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function drawPriceChart(items) {
+  const canvas = document.getElementById('priceChart');
+  const ctx = canvas.getContext('2d');
+
+  // Set canvas size for sharp rendering
+  const container = canvas.parentElement;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = container.clientWidth * dpr;
+  canvas.height = container.clientHeight * dpr;
+  canvas.style.width = container.clientWidth + 'px';
+  canvas.style.height = container.clientHeight + 'px';
+  ctx.scale(dpr, dpr);
+
+  const width = container.clientWidth;
+  const height = container.clientHeight;
+  const padding = { top: 20, right: 20, bottom: 40, left: 60 };
+  const chartWidth = width - padding.left - padding.right;
+  const chartHeight = height - padding.top - padding.bottom;
+
+  // Clear canvas
+  ctx.clearRect(0, 0, width, height);
+
+  // Get data points
+  const dataPoints = items.map(item => ({
+    date: new Date(item.purchase_date + 'T00:00:00'),
+    price: parseFloat(item.amount) / (item.quantity || 1),
+    store: item.store_location || ''
+  }));
+
+  if (dataPoints.length === 0) return;
+
+  // Calculate scales
+  const minDate = dataPoints[0].date;
+  const maxDate = dataPoints[dataPoints.length - 1].date;
+  const dateRange = maxDate - minDate || 1;
+
+  const prices = dataPoints.map(d => d.price);
+  const minPrice = Math.min(...prices) * 0.9;
+  const maxPrice = Math.max(...prices) * 1.1;
+  const priceRange = maxPrice - minPrice || 1;
+
+  // Helper functions
+  const xScale = (date) => padding.left + ((date - minDate) / dateRange) * chartWidth;
+  const yScale = (price) => padding.top + chartHeight - ((price - minPrice) / priceRange) * chartHeight;
+
+  // Draw grid lines
+  ctx.strokeStyle = '#e5e7eb';
+  ctx.lineWidth = 1;
+
+  // Horizontal grid lines (5 lines)
+  for (let i = 0; i <= 4; i++) {
+    const y = padding.top + (chartHeight / 4) * i;
+    ctx.beginPath();
+    ctx.moveTo(padding.left, y);
+    ctx.lineTo(width - padding.right, y);
+    ctx.stroke();
+
+    // Y-axis labels
+    const price = maxPrice - (priceRange / 4) * i;
+    ctx.fillStyle = '#6b7280';
+    ctx.font = '12px -apple-system, BlinkMacSystemFont, sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText('$' + price.toFixed(2), padding.left - 8, y + 4);
+  }
+
+  // Draw axes
+  ctx.strokeStyle = '#9ca3af';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(padding.left, padding.top);
+  ctx.lineTo(padding.left, height - padding.bottom);
+  ctx.lineTo(width - padding.right, height - padding.bottom);
+  ctx.stroke();
+
+  // Draw line
+  if (dataPoints.length > 1) {
+    ctx.strokeStyle = '#2563eb';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    dataPoints.forEach((point, i) => {
+      const x = xScale(point.date);
+      const y = yScale(point.price);
+      if (i === 0) {
+        ctx.moveTo(x, y);
+      } else {
+        ctx.lineTo(x, y);
+      }
+    });
+    ctx.stroke();
+  }
+
+  // Draw points
+  dataPoints.forEach((point, i) => {
+    const x = xScale(point.date);
+    const y = yScale(point.price);
+
+    // Point
+    ctx.fillStyle = '#2563eb';
+    ctx.beginPath();
+    ctx.arc(x, y, 5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // White center
+    ctx.fillStyle = 'white';
+    ctx.beginPath();
+    ctx.arc(x, y, 2, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  // X-axis labels (dates)
+  ctx.fillStyle = '#6b7280';
+  ctx.font = '11px -apple-system, BlinkMacSystemFont, sans-serif';
+  ctx.textAlign = 'center';
+
+  // Show first, middle, and last dates
+  const labelIndices = dataPoints.length <= 3
+    ? dataPoints.map((_, i) => i)
+    : [0, Math.floor(dataPoints.length / 2), dataPoints.length - 1];
+
+  labelIndices.forEach(i => {
+    const point = dataPoints[i];
+    const x = xScale(point.date);
+    const dateStr = point.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    ctx.fillText(dateStr, x, height - padding.bottom + 20);
+  });
 }

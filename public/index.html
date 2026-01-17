@@ -238,6 +238,37 @@
     </div>
   </div>
 
+  <!-- Item Price History Modal -->
+  <div id="priceHistoryModal" class="modal" hidden>
+    <div class="modal-content modal-wide">
+      <div class="modal-header">
+        <h2 id="priceHistoryTitle">Price History</h2>
+        <button class="close-btn" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="price-chart-container">
+          <canvas id="priceChart"></canvas>
+        </div>
+        <div id="priceHistoryStats" class="price-history-stats"></div>
+        <div class="price-history-table">
+          <table class="items-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Store</th>
+                <th>Job</th>
+                <th>Qty</th>
+                <th>Total</th>
+                <th>Unit Price</th>
+              </tr>
+            </thead>
+            <tbody id="priceHistoryBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Import CSV Modal -->
   <div id="importModal" class="modal" hidden>
     <div class="modal-content modal-wide">
