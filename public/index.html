@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Receipt Tracker</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header>
+    <h1>Receipt Tracker</h1>
+    <button id="newReceiptBtn" class="btn btn-primary">+ New Receipt</button>
+  </header>
+
+  <main>
+    <div id="receiptList" class="receipt-list"></div>
+  </main>
+
+  <!-- Receipt Modal -->
+  <div id="receiptModal" class="modal" hidden>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="modalTitle">New Receipt</h2>
+        <button class="close-btn" aria-label="Close">&times;</button>
+      </div>
+      <form id="receiptForm">
+        <input type="hidden" id="receiptId">
+
+        <div class="form-group">
+          <label for="jobName">Job Name *</label>
+          <input type="text" id="jobName" required>
+        </div>
+
+        <div class="form-group">
+          <label for="storeLocation">Store Location</label>
+          <input type="text" id="storeLocation">
+        </div>
+
+        <div class="form-group">
+          <label for="receiptDate">Date *</label>
+          <input type="date" id="receiptDate" required>
+        </div>
+
+        <div class="form-group">
+          <label for="notes">Notes</label>
+          <textarea id="notes" rows="3"></textarea>
+        </div>
+
+        <div class="form-group">
+          <label for="receiptFile">Receipt Image/PDF</label>
+          <input type="file" id="receiptFile" accept="image/jpeg,image/png,application/pdf">
+          <div id="currentFile" class="current-file"></div>
+        </div>
+
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary" id="cancelBtn">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Receipt</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Line Items Modal -->
+  <div id="itemsModal" class="modal" hidden>
+    <div class="modal-content modal-wide">
+      <div class="modal-header">
+        <h2>Line Items</h2>
+        <button class="close-btn" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="itemForm" class="item-form">
+          <input type="hidden" id="itemReceiptId">
+          <input type="hidden" id="itemId">
+          <div class="item-inputs">
+            <input type="text" id="itemName" placeholder="Item name" required>
+            <input type="date" id="itemDate" required>
+            <input type="number" id="itemAmount" placeholder="Amount" step="0.01" required>
+            <button type="submit" class="btn btn-primary btn-sm" id="addItemBtn">Add</button>
+          </div>
+        </form>
+        <table class="items-table">
+          <thead>
+            <tr>
+              <th>Item</th>
+              <th>Date</th>
+              <th>Amount</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="itemsTableBody"></tbody>
+          <tfoot>
+            <tr>
+              <td colspan="2"><strong>Total</strong></td>
+              <td id="itemsTotal"><strong>$0.00</strong></td>
+              <td></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete Confirmation Modal -->
+  <div id="deleteModal" class="modal" hidden>
+    <div class="modal-content modal-small">
+      <div class="modal-header">
+        <h2>Confirm Delete</h2>
+        <button class="close-btn" aria-label="Close">&times;</button>
+      </div>
+      <p id="deleteMessage">Are you sure you want to delete this receipt?</p>
+      <div class="form-actions">
+        <button type="button" class="btn btn-secondary" id="cancelDeleteBtn">Cancel</button>
+        <button type="button" class="btn btn-danger" id="confirmDeleteBtn">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- File Preview Modal -->
+  <div id="previewModal" class="modal" hidden>
+    <div class="modal-content modal-preview">
+      <div class="modal-header">
+        <h2>Receipt Preview</h2>
+        <button class="close-btn" aria-label="Close">&times;</button>
+      </div>
+      <div id="previewContent" class="preview-content"></div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
