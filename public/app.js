@@ -16,6 +16,8 @@ let searchQuery = '';
 let itemsSearchQuery = '';
 let sortColumn = 'purchase_date';
 let sortDirection = 'desc';
+let currentRotation = 0;
+let selectedFile = null;
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
@@ -83,6 +85,11 @@ function setupEventListeners() {
   // Receipt form
   receiptForm.addEventListener('submit', handleReceiptSubmit);
   document.getElementById('cancelBtn').addEventListener('click', () => closeModal(receiptModal));
+
+  // File preview and rotation
+  document.getElementById('receiptFile').addEventListener('change', handleFileSelect);
+  document.getElementById('rotateLeftBtn').addEventListener('click', () => rotateImage(-90));
+  document.getElementById('rotateRightBtn').addEventListener('click', () => rotateImage(90));
 
   // Item form
   itemForm.addEventListener('submit', handleItemSubmit);
@@ -415,6 +422,9 @@ function openReceiptModal(id) {
   const modal = receiptModal;
   const form = receiptForm;
 
+  // Reset file preview state
+  resetFilePreview();
+
   if (id) {
     const receipt = receipts.find(r => r.id === id);
     if (!receipt) return;
@@ -426,6 +436,15 @@ function openReceiptModal(id) {
     document.getElementById('receiptDate').value = receipt.receipt_date;
     document.getElementById('notes').value = receipt.notes || '';
     document.getElementById('currentFile').textContent = receipt.file_path ? `Current file: ${receipt.file_path}` : '';
+
+    // Show existing image in preview if it's an image
+    if (receipt.file_path && receipt.file_type?.startsWith('image/')) {
+      const previewPanel = document.getElementById('filePreviewPanel');
+      const previewImage = document.getElementById('previewImage');
+      previewImage.src = `/uploads/${receipt.file_path}`;
+      previewImage.style.transform = 'rotate(0deg)';
+      previewPanel.hidden = false;
+    }
   } else {
     document.getElementById('modalTitle').textContent = 'New Receipt';
     form.reset();
@@ -475,6 +494,82 @@ function confirmDelete(id, type) {
   openModal(deleteModal);
 }
 
+// File Preview and Rotation
+function handleFileSelect(e) {
+  const file = e.target.files[0];
+  selectedFile = file;
+  currentRotation = 0;
+
+  const previewPanel = document.getElementById('filePreviewPanel');
+  const previewImage = document.getElementById('previewImage');
+
+  if (!file) {
+    previewPanel.hidden = true;
+    return;
+  }
+
+  if (file.type.startsWith('image/')) {
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      previewImage.src = event.target.result;
+      previewImage.style.transform = 'rotate(0deg)';
+      previewPanel.hidden = false;
+      updateRotationLabel();
+    };
+    reader.readAsDataURL(file);
+  } else {
+    previewPanel.hidden = true;
+  }
+}
+
+function rotateImage(degrees) {
+  currentRotation = (currentRotation + degrees + 360) % 360;
+  const previewImage = document.getElementById('previewImage');
+  previewImage.style.transform = `rotate(${currentRotation}deg)`;
+  updateRotationLabel();
+}
+
+function updateRotationLabel() {
+  document.getElementById('rotationLabel').textContent = `${currentRotation}°`;
+}
+
+function rotateImageFile(file, rotation) {
+  return new Promise((resolve) => {
+    if (rotation === 0 || !file.type.startsWith('image/')) {
+      resolve(file);
+      return;
+    }
+
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+
+      // Swap dimensions for 90/270 degree rotations
+      if (rotation === 90 || rotation === 270) {
+        canvas.width = img.height;
+        canvas.height = img.width;
+      } else {
+        canvas.width = img.width;
+        canvas.height = img.height;
+      }
+
+      ctx.translate(canvas.width / 2, canvas.height / 2);
+      ctx.rotate((rotation * Math.PI) / 180);
+      ctx.drawImage(img, -img.width / 2, -img.height / 2);
+
+      canvas.toBlob((blob) => {
+        const rotatedFile = new File([blob], file.name, { type: file.type });
+        resolve(rotatedFile);
+      }, file.type, 0.95);
+    };
+
+    const reader = new FileReader();
+    reader.onload = (e) => { img.src = e.target.result; };
+    reader.readAsDataURL(file);
+  });
+}
+
 // Event Handlers
 async function handleReceiptSubmit(e) {
   e.preventDefault();
@@ -488,15 +583,27 @@ async function handleReceiptSubmit(e) {
   formData.append('notes', document.getElementById('notes').value);
 
   const file = document.getElementById('receiptFile').files[0];
-  if (file) formData.append('file', file);
+  if (file) {
+    const processedFile = await rotateImageFile(file, currentRotation);
+    formData.append('file', processedFile);
+  }
 
   try {
     await saveReceipt(formData, id || null);
     closeModal(receiptModal);
     loadReceipts();
+    resetFilePreview();
   } catch (err) {
     alert('Failed to save receipt');
   }
+}
+
+function resetFilePreview() {
+  currentRotation = 0;
+  selectedFile = null;
+  document.getElementById('filePreviewPanel').hidden = true;
+  document.getElementById('previewImage').src = '';
+  updateRotationLabel();
 }
 
 async function handleItemSubmit(e) {
