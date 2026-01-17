@@ -11,6 +11,7 @@ const itemForm = document.getElementById('itemForm');
 
 let receipts = [];
 let deleteTarget = null;
+let searchQuery = '';
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
@@ -19,6 +20,23 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function setupEventListeners() {
+  // Search
+  const searchInput = document.getElementById('searchInput');
+  const clearSearch = document.getElementById('clearSearch');
+
+  searchInput.addEventListener('input', (e) => {
+    searchQuery = e.target.value.toLowerCase();
+    clearSearch.hidden = !searchQuery;
+    renderReceipts();
+  });
+
+  clearSearch.addEventListener('click', () => {
+    searchInput.value = '';
+    searchQuery = '';
+    clearSearch.hidden = true;
+    renderReceipts();
+  });
+
   // New receipt button
   document.getElementById('newReceiptBtn').addEventListener('click', () => openReceiptModal());
 
@@ -52,9 +70,31 @@ async function loadReceipts() {
     const res = await fetch(`${API}/receipts`);
     receipts = await res.json();
     renderReceipts();
+    updateDataLists();
   } catch (err) {
     console.error('Failed to load receipts:', err);
   }
+}
+
+function updateDataLists() {
+  const jobNames = [...new Set(receipts.map(r => r.job_name).filter(Boolean))];
+  const storeLocations = [...new Set(receipts.map(r => r.store_location).filter(Boolean))];
+
+  document.getElementById('jobNameList').innerHTML =
+    jobNames.map(name => `<option value="${escapeHtml(name)}">`).join('');
+
+  document.getElementById('storeLocationList').innerHTML =
+    storeLocations.map(loc => `<option value="${escapeHtml(loc)}">`).join('');
+}
+
+function getFilteredReceipts() {
+  if (!searchQuery) return receipts;
+
+  return receipts.filter(receipt => {
+    const jobMatch = receipt.job_name?.toLowerCase().includes(searchQuery);
+    const storeMatch = receipt.store_location?.toLowerCase().includes(searchQuery);
+    return jobMatch || storeMatch;
+  });
 }
 
 async function saveReceipt(formData, id) {
@@ -91,12 +131,19 @@ async function deleteItem(id) {
 
 // Render Functions
 function renderReceipts() {
+  const filtered = getFilteredReceipts();
+
   if (receipts.length === 0) {
     receiptList.innerHTML = '<div class="empty-state"><p>No receipts yet. Click "+ New Receipt" to add one.</p></div>';
     return;
   }
 
-  receiptList.innerHTML = receipts.map(receipt => {
+  if (filtered.length === 0) {
+    receiptList.innerHTML = '<div class="empty-state"><p>No receipts match your search.</p></div>';
+    return;
+  }
+
+  receiptList.innerHTML = filtered.map(receipt => {
     const total = receipt.items.reduce((sum, item) => sum + parseFloat(item.amount), 0);
     const thumbnail = getThumbnail(receipt);
 
