@@ -130,8 +130,9 @@ function setupEventListeners() {
   jobEditForm.addEventListener('submit', handleJobEditSubmit);
   document.getElementById('cancelJobEditBtn').addEventListener('click', () => closeModal(jobEditModal));
 
-  // New job button (in receipt form)
+  // New job buttons
   document.getElementById('newJobBtn').addEventListener('click', () => openJobEdit(null));
+  document.getElementById('newJobListBtn').addEventListener('click', () => openJobEdit(null));
 
   // Click outside modal to close
   document.querySelectorAll('.modal').forEach(modal => {
