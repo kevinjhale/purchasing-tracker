@@ -1032,6 +1032,95 @@ form {
   background: rgba(37, 99, 235, 0.05);
 }
 
+/* Jobs List */
+.jobs-list {
+  display: grid;
+  gap: 1rem;
+}
+
+.job-card {
+  background: white;
+  border-radius: var(--radius);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  padding: 1rem 1.25rem;
+  cursor: pointer;
+  transition: box-shadow 0.2s, transform 0.2s;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.job-card:hover {
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  transform: translateY(-1px);
+}
+
+.job-card-info h3 {
+  font-size: 1.125rem;
+  margin: 0 0 0.25rem 0;
+}
+
+.job-card-meta {
+  display: flex;
+  gap: 1.5rem;
+  font-size: 0.875rem;
+  color: var(--gray-600);
+}
+
+.job-card-stats {
+  display: flex;
+  gap: 1.5rem;
+  align-items: center;
+}
+
+.job-card-stats .stat {
+  text-align: right;
+}
+
+.job-card-stats .stat-value {
+  font-size: 1rem;
+}
+
+.job-card-stats .stat-label {
+  font-size: 0.625rem;
+}
+
+.job-card-arrow {
+  color: var(--gray-300);
+  margin-left: 1rem;
+}
+
+/* Job Detail View */
+.job-detail-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.job-detail-header h2 {
+  font-size: 1.25rem;
+  margin: 0;
+  flex: 1;
+}
+
+.job-detail-header button {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.job-stats {
+  display: flex;
+  gap: 2rem;
+  margin-bottom: 1rem;
+  padding: 1rem;
+  background: white;
+  border-radius: var(--radius);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  flex-wrap: wrap;
+}
+
 /* Responsive */
 @media (min-width: 640px) {
   header {
@@ -1044,5 +1133,9 @@ form {
 
   .receipt-list {
     grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+  }
+
+  .jobs-list {
+    grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
   }
 }

@@ -2,6 +2,9 @@ const API = '/api';
 
 // DOM Elements
 const receiptList = document.getElementById('receiptList');
+const jobsList = document.getElementById('jobsList');
+const jobsListView = document.getElementById('jobsListView');
+const jobDetailView = document.getElementById('jobDetailView');
 const receiptModal = document.getElementById('receiptModal');
 const itemsModal = document.getElementById('itemsModal');
 const deleteModal = document.getElementById('deleteModal');
@@ -22,6 +25,7 @@ let modalCsvData = null;
 let modalCsvHeaders = [];
 let modalCsvRawLines = [];
 let modalCsvFile = null;
+let currentJob = null;
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
@@ -37,14 +41,22 @@ function setupEventListeners() {
   searchInput.addEventListener('input', (e) => {
     searchQuery = e.target.value.toLowerCase();
     clearSearch.hidden = !searchQuery;
-    renderReceipts();
+    if (currentJob) {
+      renderReceipts();
+    } else {
+      renderJobs();
+    }
   });
 
   clearSearch.addEventListener('click', () => {
     searchInput.value = '';
     searchQuery = '';
     clearSearch.hidden = true;
-    renderReceipts();
+    if (currentJob) {
+      renderReceipts();
+    } else {
+      renderJobs();
+    }
   });
 
   // Items search
@@ -107,6 +119,9 @@ function setupEventListeners() {
     btn.addEventListener('click', () => closeModal(btn.closest('.modal')));
   });
 
+  // Back to jobs button
+  document.getElementById('backToJobsBtn').addEventListener('click', showJobsList);
+
   // Click outside modal to close
   document.querySelectorAll('.modal').forEach(modal => {
     modal.addEventListener('click', (e) => {
@@ -120,7 +135,11 @@ async function loadReceipts() {
   try {
     const res = await fetch(`${API}/receipts`);
     receipts = await res.json();
-    renderReceipts();
+    if (currentJob) {
+      renderReceipts();
+    } else {
+      renderJobs();
+    }
     updateDataLists();
   } catch (err) {
     console.error('Failed to load receipts:', err);
@@ -163,13 +182,70 @@ function updateDataLists() {
 }
 
 function getFilteredReceipts() {
-  if (!searchQuery) return receipts;
+  // Filter by current job first
+  let filtered = currentJob
+    ? receipts.filter(r => r.job_name === currentJob)
+    : receipts;
 
-  return receipts.filter(receipt => {
-    const jobMatch = receipt.job_name?.toLowerCase().includes(searchQuery);
-    const storeMatch = receipt.store_location?.toLowerCase().includes(searchQuery);
-    return jobMatch || storeMatch;
-  });
+  // Then filter by search query
+  if (searchQuery) {
+    filtered = filtered.filter(receipt => {
+      const storeMatch = receipt.store_location?.toLowerCase().includes(searchQuery);
+      const dateMatch = receipt.receipt_date?.includes(searchQuery);
+      return storeMatch || dateMatch;
+    });
+  }
+
+  return filtered;
+}
+
+function getGroupedJobs() {
+  const jobsMap = new Map();
+
+  for (const receipt of receipts) {
+    const jobName = receipt.job_name;
+    if (!jobsMap.has(jobName)) {
+      jobsMap.set(jobName, {
+        name: jobName,
+        receipts: [],
+        total: 0,
+        itemCount: 0,
+        latestDate: null,
+        stores: new Set()
+      });
+    }
+
+    const job = jobsMap.get(jobName);
+    job.receipts.push(receipt);
+    const receiptTotal = receipt.items.reduce((sum, item) => sum + parseFloat(item.amount), 0);
+    job.total += receiptTotal;
+    job.itemCount += receipt.items.length;
+
+    if (receipt.store_location) {
+      job.stores.add(receipt.store_location);
+    }
+
+    const receiptDate = new Date(receipt.receipt_date);
+    if (!job.latestDate || receiptDate > job.latestDate) {
+      job.latestDate = receiptDate;
+    }
+  }
+
+  // Convert to array and sort by latest date
+  return Array.from(jobsMap.values())
+    .sort((a, b) => (b.latestDate || 0) - (a.latestDate || 0));
+}
+
+function getFilteredJobs() {
+  let jobs = getGroupedJobs();
+
+  if (searchQuery) {
+    jobs = jobs.filter(job =>
+      job.name.toLowerCase().includes(searchQuery)
+    );
+  }
+
+  return jobs;
 }
 
 function getFilteredAndSortedItems() {
@@ -244,16 +320,112 @@ async function deleteItem(id) {
 }
 
 // Render Functions
-function renderReceipts() {
-  const filtered = getFilteredReceipts();
+function renderJobs() {
+  const filtered = getFilteredJobs();
 
   if (receipts.length === 0) {
-    receiptList.innerHTML = '<div class="empty-state"><p>No receipts yet. Click "+ New Receipt" to add one.</p></div>';
+    jobsList.innerHTML = '<div class="empty-state"><p>No jobs yet. Click "+ New Receipt" to add one.</p></div>';
     return;
   }
 
   if (filtered.length === 0) {
+    jobsList.innerHTML = '<div class="empty-state"><p>No jobs match your search.</p></div>';
+    return;
+  }
+
+  jobsList.innerHTML = filtered.map(job => {
+    const storesList = Array.from(job.stores).slice(0, 3).join(', ');
+    const moreStores = job.stores.size > 3 ? ` +${job.stores.size - 3} more` : '';
+
+    return `
+      <div class="job-card" onclick="openJobDetail('${escapeHtml(job.name).replace(/'/g, "\\'")}')">
+        <div class="job-card-info">
+          <h3>${escapeHtml(job.name)}</h3>
+          <div class="job-card-meta">
+            <span>${job.receipts.length} receipt${job.receipts.length !== 1 ? 's' : ''}</span>
+            ${storesList ? `<span>${escapeHtml(storesList)}${moreStores}</span>` : ''}
+          </div>
+        </div>
+        <div class="job-card-stats">
+          <div class="stat">
+            <span class="stat-value">${job.itemCount}</span>
+            <span class="stat-label">Items</span>
+          </div>
+          <div class="stat">
+            <span class="stat-value">$${job.total.toFixed(2)}</span>
+            <span class="stat-label">Total</span>
+          </div>
+          <svg class="job-card-arrow" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M8 4l6 6-6 6"/>
+          </svg>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function openJobDetail(jobName) {
+  currentJob = jobName;
+  searchQuery = '';
+  document.getElementById('searchInput').value = '';
+  document.getElementById('clearSearch').hidden = true;
+  document.getElementById('searchInput').placeholder = 'Search receipts...';
+
+  document.getElementById('jobDetailTitle').textContent = jobName;
+
+  // Calculate job stats
+  const jobReceipts = receipts.filter(r => r.job_name === jobName);
+  const totalSpent = jobReceipts.reduce((sum, r) =>
+    sum + r.items.reduce((s, i) => s + parseFloat(i.amount), 0), 0);
+  const totalItems = jobReceipts.reduce((sum, r) => sum + r.items.length, 0);
+  const stores = new Set(jobReceipts.map(r => r.store_location).filter(Boolean));
+
+  document.getElementById('jobStats').innerHTML = `
+    <div class="stat">
+      <span class="stat-label">Receipts</span>
+      <span class="stat-value">${jobReceipts.length}</span>
+    </div>
+    <div class="stat">
+      <span class="stat-label">Items</span>
+      <span class="stat-value">${totalItems}</span>
+    </div>
+    <div class="stat">
+      <span class="stat-label">Stores</span>
+      <span class="stat-value">${stores.size}</span>
+    </div>
+    <div class="stat">
+      <span class="stat-label">Total Spent</span>
+      <span class="stat-value">$${totalSpent.toFixed(2)}</span>
+    </div>
+  `;
+
+  jobsListView.hidden = true;
+  jobDetailView.hidden = false;
+  renderReceipts();
+}
+
+function showJobsList() {
+  currentJob = null;
+  searchQuery = '';
+  document.getElementById('searchInput').value = '';
+  document.getElementById('clearSearch').hidden = true;
+  document.getElementById('searchInput').placeholder = 'Search jobs...';
+
+  jobsListView.hidden = false;
+  jobDetailView.hidden = true;
+  renderJobs();
+}
+
+function renderReceipts() {
+  const filtered = getFilteredReceipts();
+
+  if (filtered.length === 0 && currentJob) {
     receiptList.innerHTML = '<div class="empty-state"><p>No receipts match your search.</p></div>';
+    return;
+  }
+
+  if (filtered.length === 0) {
+    receiptList.innerHTML = '<div class="empty-state"><p>No receipts found.</p></div>';
     return;
   }
 
@@ -1007,8 +1179,12 @@ function editItem(itemId) {
 }
 
 function goToReceipt(receiptId) {
-  switchTab('receipts');
-  openItemsModal(receiptId);
+  const receipt = receipts.find(r => r.id === receiptId);
+  if (receipt) {
+    switchTab('receipts');
+    openJobDetail(receipt.job_name);
+    openItemsModal(receiptId);
+  }
 }
 
 // Utilities

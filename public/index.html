@@ -30,11 +30,29 @@
 
     <!-- Receipts Tab -->
     <div id="receiptsTab" class="tab-content active">
-      <div class="search-bar">
-        <input type="text" id="searchInput" placeholder="Search by job name or store...">
-        <button id="clearSearch" class="btn btn-secondary btn-sm" hidden>Clear</button>
+      <!-- Jobs List View -->
+      <div id="jobsListView">
+        <div class="search-bar">
+          <input type="text" id="searchInput" placeholder="Search jobs...">
+          <button id="clearSearch" class="btn btn-secondary btn-sm" hidden>Clear</button>
+        </div>
+        <div id="jobsList" class="jobs-list"></div>
       </div>
-      <div id="receiptList" class="receipt-list"></div>
+
+      <!-- Job Detail View (hidden by default) -->
+      <div id="jobDetailView" hidden>
+        <div class="job-detail-header">
+          <button id="backToJobsBtn" class="btn btn-secondary btn-sm">
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M15 8H3m0 0l5 5m-5-5l5-5"/>
+            </svg>
+            Back to Jobs
+          </button>
+          <h2 id="jobDetailTitle"></h2>
+        </div>
+        <div class="job-stats" id="jobStats"></div>
+        <div id="receiptList" class="receipt-list"></div>
+      </div>
     </div>
 
     <!-- All Items Tab -->
