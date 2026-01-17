@@ -95,9 +95,13 @@
           <input type="hidden" id="imageRotation" value="0">
 
           <div class="form-group">
-            <label for="jobName">Job Name *</label>
-            <input type="text" id="jobName" list="jobNameList" required autocomplete="off">
-            <datalist id="jobNameList"></datalist>
+            <label for="jobSelect">Job *</label>
+            <div class="job-select-row">
+              <select id="jobSelect" required>
+                <option value="">Select a job...</option>
+              </select>
+              <button type="button" class="btn btn-secondary btn-sm" id="newJobBtn" title="Create new job">+</button>
+            </div>
           </div>
 
           <div class="form-group">
@@ -249,11 +253,11 @@
   <div id="jobEditModal" class="modal" hidden>
     <div class="modal-content modal-small">
       <div class="modal-header">
-        <h2>Edit Job</h2>
+        <h2 id="jobEditTitle">Edit Job</h2>
         <button class="close-btn" aria-label="Close">&times;</button>
       </div>
       <form id="jobEditForm">
-        <input type="hidden" id="jobEditOldName">
+        <input type="hidden" id="jobEditId">
         <div class="form-group">
           <label for="jobEditName">Job Name</label>
           <input type="text" id="jobEditName" required>

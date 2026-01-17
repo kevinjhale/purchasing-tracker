@@ -68,9 +68,9 @@ app.get('/api/receipts/:id', (req, res) => {
 // Create receipt
 app.post('/api/receipts', upload.single('file'), (req, res) => {
   try {
-    const { job_name, store_location, receipt_date, notes, imported_file_path, imported_file_type } = req.body;
-    if (!job_name || !receipt_date) {
-      return res.status(400).json({ error: 'Job name and date are required' });
+    const { job_id, store_location, receipt_date, notes, imported_file_path, imported_file_type } = req.body;
+    if (!job_id || !receipt_date) {
+      return res.status(400).json({ error: 'Job ID and date are required' });
     }
 
     // Use uploaded file, or imported file reference
@@ -78,7 +78,7 @@ app.post('/api/receipts', upload.single('file'), (req, res) => {
     const file_type = req.file ? req.file.mimetype : (imported_file_type || null);
 
     const receipt = db.createReceipt({
-      job_name, store_location, receipt_date, notes, file_path, file_type
+      job_id: parseInt(job_id), store_location, receipt_date, notes, file_path, file_type
     });
     res.status(201).json(receipt);
   } catch (err) {
@@ -89,16 +89,16 @@ app.post('/api/receipts', upload.single('file'), (req, res) => {
 // Update receipt
 app.put('/api/receipts/:id', upload.single('file'), (req, res) => {
   try {
-    const { job_name, store_location, receipt_date, notes } = req.body;
-    if (!job_name || !receipt_date) {
-      return res.status(400).json({ error: 'Job name and date are required' });
+    const { job_id, store_location, receipt_date, notes } = req.body;
+    if (!job_id || !receipt_date) {
+      return res.status(400).json({ error: 'Job ID and date are required' });
     }
 
     const file_path = req.file ? req.file.filename : null;
     const file_type = req.file ? req.file.mimetype : null;
 
     const receipt = db.updateReceipt(req.params.id, {
-      job_name, store_location, receipt_date, notes, file_path, file_type
+      job_id: parseInt(job_id), store_location, receipt_date, notes, file_path, file_type
     });
     if (!receipt) return res.status(404).json({ error: 'Receipt not found' });
     res.json(receipt);
@@ -195,39 +195,77 @@ app.post('/api/upload-csv', upload.single('file'), (req, res) => {
   }
 });
 
-// Rename job (updates all receipts with that job name)
-app.put('/api/jobs/:name', (req, res) => {
+// Jobs CRUD
+app.get('/api/jobs', (req, res) => {
   try {
-    const oldName = decodeURIComponent(req.params.name);
-    const { new_name } = req.body;
-
-    if (!new_name || !new_name.trim()) {
-      return res.status(400).json({ error: 'New job name is required' });
-    }
-
-    const changes = db.renameJob(oldName, new_name.trim());
-    if (changes === 0) {
-      return res.status(404).json({ error: 'Job not found' });
-    }
-
-    res.json({ message: 'Job renamed', old_name: oldName, new_name: new_name.trim(), receipts_updated: changes });
+    const jobs = db.getAllJobs();
+    res.json(jobs);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// Delete job (deletes all receipts and their files)
-app.delete('/api/jobs/:name', (req, res) => {
+app.get('/api/jobs/:id', (req, res) => {
   try {
-    const jobName = decodeURIComponent(req.params.name);
-    const receipts = db.deleteJob(jobName);
+    const job = db.getJobById(req.params.id);
+    if (!job) return res.status(404).json({ error: 'Job not found' });
+    res.json(job);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
-    if (receipts.length === 0) {
-      return res.status(404).json({ error: 'Job not found' });
+app.get('/api/jobs/:id/receipts', (req, res) => {
+  try {
+    const receipts = db.getReceiptsByJobId(req.params.id);
+    res.json(receipts);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/jobs', (req, res) => {
+  try {
+    const { name } = req.body;
+    if (!name || !name.trim()) {
+      return res.status(400).json({ error: 'Job name is required' });
     }
 
+    const job = db.createJob(name.trim());
+    res.status(201).json(job);
+  } catch (err) {
+    if (err.message.includes('UNIQUE constraint')) {
+      return res.status(400).json({ error: 'A job with this name already exists' });
+    }
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/jobs/:id', (req, res) => {
+  try {
+    const { name } = req.body;
+    if (!name || !name.trim()) {
+      return res.status(400).json({ error: 'Job name is required' });
+    }
+
+    const job = db.updateJob(req.params.id, name.trim());
+    if (!job) return res.status(404).json({ error: 'Job not found' });
+    res.json(job);
+  } catch (err) {
+    if (err.message.includes('UNIQUE constraint')) {
+      return res.status(400).json({ error: 'A job with this name already exists' });
+    }
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/jobs/:id', (req, res) => {
+  try {
+    const result = db.deleteJob(req.params.id);
+    if (!result) return res.status(404).json({ error: 'Job not found' });
+
     // Delete associated files
-    for (const receipt of receipts) {
+    for (const receipt of result.receipts) {
       if (receipt.file_path) {
         const filePath = path.join(uploadsDir, receipt.file_path);
         if (fs.existsSync(filePath)) {
@@ -236,7 +274,7 @@ app.delete('/api/jobs/:name', (req, res) => {
       }
     }
 
-    res.json({ message: 'Job deleted', job_name: jobName, receipts_deleted: receipts.length });
+    res.json({ message: 'Job deleted', job: result.job, receipts_deleted: result.receipts.length });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

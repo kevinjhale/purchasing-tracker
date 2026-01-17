@@ -14,6 +14,7 @@ const receiptForm = document.getElementById('receiptForm');
 const itemForm = document.getElementById('itemForm');
 const jobEditForm = document.getElementById('jobEditForm');
 
+let jobs = [];
 let receipts = [];
 let allItems = [];
 let deleteTarget = null;
@@ -27,10 +28,11 @@ let modalCsvData = null;
 let modalCsvHeaders = [];
 let modalCsvRawLines = [];
 let modalCsvFile = null;
-let currentJob = null;
+let currentJobId = null;
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
+  loadJobs();
   loadReceipts();
   setupEventListeners();
 });
@@ -43,7 +45,7 @@ function setupEventListeners() {
   searchInput.addEventListener('input', (e) => {
     searchQuery = e.target.value.toLowerCase();
     clearSearch.hidden = !searchQuery;
-    if (currentJob) {
+    if (currentJobId) {
       renderReceipts();
     } else {
       renderJobs();
@@ -54,7 +56,7 @@ function setupEventListeners() {
     searchInput.value = '';
     searchQuery = '';
     clearSearch.hidden = true;
-    if (currentJob) {
+    if (currentJobId) {
       renderReceipts();
     } else {
       renderJobs();
@@ -128,6 +130,9 @@ function setupEventListeners() {
   jobEditForm.addEventListener('submit', handleJobEditSubmit);
   document.getElementById('cancelJobEditBtn').addEventListener('click', () => closeModal(jobEditModal));
 
+  // New job button (in receipt form)
+  document.getElementById('newJobBtn').addEventListener('click', () => openJobEdit(null));
+
   // Click outside modal to close
   document.querySelectorAll('.modal').forEach(modal => {
     modal.addEventListener('click', (e) => {
@@ -137,18 +142,42 @@ function setupEventListeners() {
 }
 
 // API Functions
+async function loadJobs() {
+  try {
+    const res = await fetch(`${API}/jobs`);
+    jobs = await res.json();
+    updateJobSelect();
+    if (!currentJobId) {
+      renderJobs();
+    }
+  } catch (err) {
+    console.error('Failed to load jobs:', err);
+  }
+}
+
 async function loadReceipts() {
   try {
     const res = await fetch(`${API}/receipts`);
     receipts = await res.json();
-    if (currentJob) {
+    if (currentJobId) {
       renderReceipts();
-    } else {
-      renderJobs();
     }
     updateDataLists();
   } catch (err) {
     console.error('Failed to load receipts:', err);
+  }
+}
+
+function updateJobSelect() {
+  const select = document.getElementById('jobSelect');
+  const currentValue = select.value;
+
+  select.innerHTML = '<option value="">Select a job...</option>' +
+    jobs.map(job => `<option value="${job.id}">${escapeHtml(job.name)}</option>`).join('');
+
+  // Restore selection if still valid
+  if (currentValue && jobs.find(j => j.id === parseInt(currentValue))) {
+    select.value = currentValue;
   }
 }
 
@@ -177,11 +206,7 @@ function switchTab(tabName) {
 }
 
 function updateDataLists() {
-  const jobNames = [...new Set(receipts.map(r => r.job_name).filter(Boolean))];
   const storeLocations = [...new Set(receipts.map(r => r.store_location).filter(Boolean))];
-
-  document.getElementById('jobNameList').innerHTML =
-    jobNames.map(name => `<option value="${escapeHtml(name)}">`).join('');
 
   document.getElementById('storeLocationList').innerHTML =
     storeLocations.map(loc => `<option value="${escapeHtml(loc)}">`).join('');
@@ -189,8 +214,8 @@ function updateDataLists() {
 
 function getFilteredReceipts() {
   // Filter by current job first
-  let filtered = currentJob
-    ? receipts.filter(r => r.job_name === currentJob)
+  let filtered = currentJobId
+    ? receipts.filter(r => r.job_id === currentJobId)
     : receipts;
 
   // Then filter by search query
@@ -198,60 +223,20 @@ function getFilteredReceipts() {
     filtered = filtered.filter(receipt => {
       const storeMatch = receipt.store_location?.toLowerCase().includes(searchQuery);
       const dateMatch = receipt.receipt_date?.includes(searchQuery);
-      return storeMatch || dateMatch;
+      const idMatch = String(receipt.id).includes(searchQuery);
+      return storeMatch || dateMatch || idMatch;
     });
   }
 
   return filtered;
 }
 
-function getGroupedJobs() {
-  const jobsMap = new Map();
-
-  for (const receipt of receipts) {
-    const jobName = receipt.job_name;
-    if (!jobsMap.has(jobName)) {
-      jobsMap.set(jobName, {
-        name: jobName,
-        receipts: [],
-        total: 0,
-        itemCount: 0,
-        latestDate: null,
-        stores: new Set()
-      });
-    }
-
-    const job = jobsMap.get(jobName);
-    job.receipts.push(receipt);
-    const receiptTotal = receipt.items.reduce((sum, item) => sum + parseFloat(item.amount), 0);
-    job.total += receiptTotal;
-    job.itemCount += receipt.items.length;
-
-    if (receipt.store_location) {
-      job.stores.add(receipt.store_location);
-    }
-
-    const receiptDate = new Date(receipt.receipt_date);
-    if (!job.latestDate || receiptDate > job.latestDate) {
-      job.latestDate = receiptDate;
-    }
-  }
-
-  // Convert to array and sort by latest date
-  return Array.from(jobsMap.values())
-    .sort((a, b) => (b.latestDate || 0) - (a.latestDate || 0));
-}
-
 function getFilteredJobs() {
-  let jobs = getGroupedJobs();
+  if (!searchQuery) return jobs;
 
-  if (searchQuery) {
-    jobs = jobs.filter(job =>
-      job.name.toLowerCase().includes(searchQuery)
-    );
-  }
-
-  return jobs;
+  return jobs.filter(job =>
+    job.name.toLowerCase().includes(searchQuery)
+  );
 }
 
 function getFilteredAndSortedItems() {
@@ -329,7 +314,7 @@ async function deleteItem(id) {
 function renderJobs() {
   const filtered = getFilteredJobs();
 
-  if (receipts.length === 0) {
+  if (jobs.length === 0) {
     jobsList.innerHTML = '<div class="empty-state"><p>No jobs yet. Click "+ New Receipt" to add one.</p></div>';
     return;
   }
@@ -340,27 +325,21 @@ function renderJobs() {
   }
 
   jobsList.innerHTML = filtered.map(job => {
-    const storesList = Array.from(job.stores).slice(0, 3).join(', ');
-    const moreStores = job.stores.size > 3 ? ` +${job.stores.size - 3} more` : '';
-    const escapedName = escapeHtml(job.name).replace(/'/g, "\\'");
+    const total = parseFloat(job.total_amount) || 0;
 
     return `
       <div class="job-card">
-        <div class="job-card-main" onclick="openJobDetail('${escapedName}')">
+        <div class="job-card-main" onclick="openJobDetail(${job.id})">
           <div class="job-card-info">
             <h3>${escapeHtml(job.name)}</h3>
             <div class="job-card-meta">
-              <span>${job.receipts.length} receipt${job.receipts.length !== 1 ? 's' : ''}</span>
-              ${storesList ? `<span>${escapeHtml(storesList)}${moreStores}</span>` : ''}
+              <span>${job.receipt_count} receipt${job.receipt_count !== 1 ? 's' : ''}</span>
+              <span class="receipt-id">#${job.id}</span>
             </div>
           </div>
           <div class="job-card-stats">
             <div class="stat">
-              <span class="stat-value">${job.itemCount}</span>
-              <span class="stat-label">Items</span>
-            </div>
-            <div class="stat">
-              <span class="stat-value">$${job.total.toFixed(2)}</span>
+              <span class="stat-value">$${total.toFixed(2)}</span>
               <span class="stat-label">Total</span>
             </div>
             <svg class="job-card-arrow" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
@@ -369,13 +348,13 @@ function renderJobs() {
           </div>
         </div>
         <div class="job-card-actions">
-          <button class="btn-icon" onclick="event.stopPropagation(); openJobEdit('${escapedName}')" title="Edit Job">
+          <button class="btn-icon" onclick="event.stopPropagation(); openJobEdit(${job.id})" title="Edit Job">
             <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M11 4H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/>
               <path d="M18.5 2.5a2.121 2.121 0 0 1 0 3L12 12l-4 1 1-4 6.5-6.5a2.121 2.121 0 0 1 3 0z"/>
             </svg>
           </button>
-          <button class="btn-icon" onclick="event.stopPropagation(); confirmDeleteJob('${escapedName}')" title="Delete Job">
+          <button class="btn-icon" onclick="event.stopPropagation(); confirmDeleteJob(${job.id})" title="Delete Job">
             <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
             </svg>
@@ -386,23 +365,28 @@ function renderJobs() {
   }).join('');
 }
 
-function openJobDetail(jobName) {
-  currentJob = jobName;
+function openJobDetail(jobId) {
+  currentJobId = jobId;
   searchQuery = '';
   document.getElementById('searchInput').value = '';
   document.getElementById('clearSearch').hidden = true;
   document.getElementById('searchInput').placeholder = 'Search receipts...';
 
-  document.getElementById('jobDetailTitle').textContent = jobName;
+  const job = jobs.find(j => j.id === jobId);
+  document.getElementById('jobDetailTitle').textContent = job ? job.name : 'Unknown Job';
 
   // Calculate job stats
-  const jobReceipts = receipts.filter(r => r.job_name === jobName);
+  const jobReceipts = receipts.filter(r => r.job_id === jobId);
   const totalSpent = jobReceipts.reduce((sum, r) =>
     sum + r.items.reduce((s, i) => s + parseFloat(i.amount), 0), 0);
   const totalItems = jobReceipts.reduce((sum, r) => sum + r.items.length, 0);
   const stores = new Set(jobReceipts.map(r => r.store_location).filter(Boolean));
 
   document.getElementById('jobStats').innerHTML = `
+    <div class="stat">
+      <span class="stat-label">Job ID</span>
+      <span class="stat-value">#${jobId}</span>
+    </div>
     <div class="stat">
       <span class="stat-label">Receipts</span>
       <span class="stat-value">${jobReceipts.length}</span>
@@ -427,7 +411,7 @@ function openJobDetail(jobName) {
 }
 
 function showJobsList() {
-  currentJob = null;
+  currentJobId = null;
   searchQuery = '';
   document.getElementById('searchInput').value = '';
   document.getElementById('clearSearch').hidden = true;
@@ -441,7 +425,7 @@ function showJobsList() {
 function renderReceipts() {
   const filtered = getFilteredReceipts();
 
-  if (filtered.length === 0 && currentJob) {
+  if (filtered.length === 0 && currentJobId) {
     receiptList.innerHTML = '<div class="empty-state"><p>No receipts match your search.</p></div>';
     return;
   }
@@ -460,10 +444,13 @@ function renderReceipts() {
         <div class="receipt-card-header">
           ${thumbnail}
           <div class="receipt-info">
-            <h3>${escapeHtml(receipt.job_name)}</h3>
+            <h3>
+              <span class="receipt-id">#${receipt.id}</span>
+              ${receipt.store_location ? escapeHtml(receipt.store_location) : 'Receipt'}
+            </h3>
             <div class="receipt-meta">
               <span>${formatDate(receipt.receipt_date)}</span>
-              ${receipt.store_location ? `<span>${escapeHtml(receipt.store_location)}</span>` : ''}
+              ${receipt.notes ? `<span>${escapeHtml(receipt.notes.substring(0, 30))}${receipt.notes.length > 30 ? '...' : ''}</span>` : ''}
             </div>
           </div>
           <div class="receipt-actions">
@@ -658,7 +645,7 @@ function openReceiptModal(id) {
 
     document.getElementById('modalTitle').textContent = 'Edit Receipt';
     document.getElementById('receiptId').value = id;
-    document.getElementById('jobName').value = receipt.job_name;
+    document.getElementById('jobSelect').value = receipt.job_id || '';
     document.getElementById('storeLocation').value = receipt.store_location || '';
     document.getElementById('receiptDate').value = receipt.receipt_date;
     document.getElementById('notes').value = receipt.notes || '';
@@ -678,10 +665,14 @@ function openReceiptModal(id) {
     document.getElementById('receiptId').value = '';
     document.getElementById('receiptDate').value = new Date().toISOString().split('T')[0];
     document.getElementById('currentFile').textContent = '';
+    // Pre-select current job if viewing a job
+    if (currentJobId) {
+      document.getElementById('jobSelect').value = currentJobId;
+    }
   }
 
   openModal(modal);
-  document.getElementById('jobName').focus();
+  document.getElementById('jobSelect').focus();
 }
 
 function openItemsModal(receiptId) {
@@ -721,48 +712,71 @@ function confirmDelete(id, type) {
   openModal(deleteModal);
 }
 
-function openJobEdit(jobName) {
-  document.getElementById('jobEditOldName').value = jobName;
-  document.getElementById('jobEditName').value = jobName;
+function openJobEdit(jobId) {
+  const isNew = jobId === null;
+  document.getElementById('jobEditTitle').textContent = isNew ? 'New Job' : 'Edit Job';
+  document.getElementById('jobEditId').value = jobId || '';
+
+  if (isNew) {
+    document.getElementById('jobEditName').value = '';
+  } else {
+    const job = jobs.find(j => j.id === jobId);
+    document.getElementById('jobEditName').value = job ? job.name : '';
+  }
+
   openModal(jobEditModal);
   document.getElementById('jobEditName').focus();
-  document.getElementById('jobEditName').select();
+  if (!isNew) {
+    document.getElementById('jobEditName').select();
+  }
 }
 
 async function handleJobEditSubmit(e) {
   e.preventDefault();
 
-  const oldName = document.getElementById('jobEditOldName').value;
-  const newName = document.getElementById('jobEditName').value.trim();
+  const jobId = document.getElementById('jobEditId').value;
+  const name = document.getElementById('jobEditName').value.trim();
+  const isNew = !jobId;
 
-  if (!newName) {
+  if (!name) {
     alert('Job name is required');
     return;
   }
 
-  if (oldName === newName) {
-    closeModal(jobEditModal);
-    return;
-  }
-
   try {
-    const res = await fetch(`${API}/jobs/${encodeURIComponent(oldName)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ new_name: newName })
-    });
+    let res;
+    if (isNew) {
+      res = await fetch(`${API}/jobs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name })
+      });
+    } else {
+      res = await fetch(`${API}/jobs/${jobId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name })
+      });
+    }
 
     if (!res.ok) {
       const err = await res.json();
-      throw new Error(err.error || 'Failed to rename job');
+      throw new Error(err.error || 'Failed to save job');
     }
 
+    const savedJob = await res.json();
     closeModal(jobEditModal);
 
-    // If we were viewing this job, update currentJob
-    if (currentJob === oldName) {
-      currentJob = newName;
-      document.getElementById('jobDetailTitle').textContent = newName;
+    await loadJobs();
+
+    // If we were viewing this job, update the title
+    if (currentJobId === parseInt(jobId)) {
+      document.getElementById('jobDetailTitle').textContent = name;
+    }
+
+    // If creating new job from receipt modal, select it
+    if (isNew && !receiptModal.hidden) {
+      document.getElementById('jobSelect').value = savedJob.id;
     }
 
     await loadReceipts();
@@ -771,10 +785,11 @@ async function handleJobEditSubmit(e) {
   }
 }
 
-function confirmDeleteJob(jobName) {
-  deleteTarget = { id: jobName, type: 'job' };
+function confirmDeleteJob(jobId) {
+  const job = jobs.find(j => j.id === jobId);
+  deleteTarget = { id: jobId, type: 'job' };
   document.getElementById('deleteMessage').textContent =
-    `Are you sure you want to delete the job "${jobName}" and all its receipts?`;
+    `Are you sure you want to delete the job "${job ? job.name : 'Unknown'}" and all its receipts?`;
   openModal(deleteModal);
 }
 
@@ -992,7 +1007,7 @@ async function handleReceiptSubmit(e) {
 
   const formData = new FormData();
 
-  formData.append('job_name', document.getElementById('jobName').value);
+  formData.append('job_id', document.getElementById('jobSelect').value);
   formData.append('store_location', document.getElementById('storeLocation').value);
   formData.append('receipt_date', document.getElementById('receiptDate').value);
   formData.append('notes', document.getElementById('notes').value);
@@ -1006,7 +1021,8 @@ async function handleReceiptSubmit(e) {
   try {
     await saveReceipt(formData, id || null);
     closeModal(receiptModal);
-    loadReceipts();
+    await loadJobs();
+    await loadReceipts();
     resetFilePreview();
   } catch (err) {
     alert('Failed to save receipt');
@@ -1015,10 +1031,15 @@ async function handleReceiptSubmit(e) {
 
 async function handleModalCSVImport() {
   // Get form values as defaults
-  const defaultJobName = document.getElementById('jobName').value || 'CSV Import';
+  const defaultJobId = document.getElementById('jobSelect').value;
   const defaultStoreLocation = document.getElementById('storeLocation').value || '';
   const defaultDate = document.getElementById('receiptDate').value || new Date().toISOString().split('T')[0];
   const defaultNotes = document.getElementById('notes').value || '';
+
+  if (!defaultJobId) {
+    alert('Please select a job');
+    return;
+  }
 
   // Get mapping from modal
   const mappingSelects = document.querySelectorAll('#modalMappingContainer select');
@@ -1066,7 +1087,7 @@ async function handleModalCSVImport() {
 
     // Create single receipt with all items (use form values, not CSV grouping)
     const receiptFormData = new FormData();
-    receiptFormData.append('job_name', defaultJobName);
+    receiptFormData.append('job_id', defaultJobId);
     receiptFormData.append('store_location', defaultStoreLocation);
     receiptFormData.append('receipt_date', defaultDate);
     receiptFormData.append('notes', defaultNotes);
@@ -1215,7 +1236,7 @@ async function handleDelete() {
 
   try {
     if (deleteTarget.type === 'job') {
-      const res = await fetch(`${API}/jobs/${encodeURIComponent(deleteTarget.id)}`, {
+      const res = await fetch(`${API}/jobs/${deleteTarget.id}`, {
         method: 'DELETE'
       });
       if (!res.ok) {
@@ -1224,9 +1245,10 @@ async function handleDelete() {
       }
       closeModal(deleteModal);
       // If we were viewing this job, go back to jobs list
-      if (currentJob === deleteTarget.id) {
+      if (currentJobId === deleteTarget.id) {
         showJobsList();
       }
+      await loadJobs();
       await loadReceipts();
       // Also refresh items tab if it was open
       if (allItems.length > 0) {
@@ -1235,6 +1257,7 @@ async function handleDelete() {
     } else if (deleteTarget.type === 'receipt') {
       await deleteReceipt(deleteTarget.id);
       closeModal(deleteModal);
+      await loadJobs();
       await loadReceipts();
       // Also refresh items tab if it was open
       if (allItems.length > 0) {
@@ -1242,6 +1265,7 @@ async function handleDelete() {
       }
     } else {
       await deleteItem(deleteTarget.id);
+      await loadJobs();
       await loadReceipts();
 
       const receiptId = document.getElementById('itemReceiptId').value;
@@ -1279,7 +1303,7 @@ function goToReceipt(receiptId) {
   const receipt = receipts.find(r => r.id === receiptId);
   if (receipt) {
     switchTab('receipts');
-    openJobDetail(receipt.job_name);
+    openJobDetail(receipt.job_id);
     openItemsModal(receiptId);
   }
 }
