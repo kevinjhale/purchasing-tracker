@@ -167,6 +167,16 @@ app.delete('/api/items/:id', (req, res) => {
   }
 });
 
+// Get all items with receipt details
+app.get('/api/items', (req, res) => {
+  try {
+    const items = db.getAllItems();
+    res.json(items);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Server running at http://localhost:${PORT}`);
 });

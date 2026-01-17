@@ -13,11 +13,42 @@
   </header>
 
   <main>
-    <div class="search-bar">
-      <input type="text" id="searchInput" placeholder="Search by job name or store...">
-      <button id="clearSearch" class="btn btn-secondary btn-sm" hidden>Clear</button>
+    <div class="tabs">
+      <button class="tab active" data-tab="receipts">Receipts</button>
+      <button class="tab" data-tab="items">All Items</button>
     </div>
-    <div id="receiptList" class="receipt-list"></div>
+
+    <!-- Receipts Tab -->
+    <div id="receiptsTab" class="tab-content active">
+      <div class="search-bar">
+        <input type="text" id="searchInput" placeholder="Search by job name or store...">
+        <button id="clearSearch" class="btn btn-secondary btn-sm" hidden>Clear</button>
+      </div>
+      <div id="receiptList" class="receipt-list"></div>
+    </div>
+
+    <!-- All Items Tab -->
+    <div id="itemsTab" class="tab-content" hidden>
+      <div class="search-bar">
+        <input type="text" id="itemsSearchInput" placeholder="Search items...">
+        <button id="clearItemsSearch" class="btn btn-secondary btn-sm" hidden>Clear</button>
+      </div>
+      <div class="table-container">
+        <table class="all-items-table" id="allItemsTable">
+          <thead>
+            <tr>
+              <th data-sort="item_name" class="sortable">Item <span class="sort-icon"></span></th>
+              <th data-sort="purchase_date" class="sortable">Date <span class="sort-icon"></span></th>
+              <th data-sort="amount" class="sortable">Amount <span class="sort-icon"></span></th>
+              <th data-sort="store_location" class="sortable">Store <span class="sort-icon"></span></th>
+              <th data-sort="job_name" class="sortable">Job <span class="sort-icon"></span></th>
+            </tr>
+          </thead>
+          <tbody id="allItemsBody"></tbody>
+        </table>
+      </div>
+      <div id="itemsStats" class="items-stats"></div>
+    </div>
   </main>
 
   <!-- Receipt Modal -->

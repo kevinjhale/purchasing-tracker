@@ -10,8 +10,12 @@ const receiptForm = document.getElementById('receiptForm');
 const itemForm = document.getElementById('itemForm');
 
 let receipts = [];
+let allItems = [];
 let deleteTarget = null;
 let searchQuery = '';
+let itemsSearchQuery = '';
+let sortColumn = 'purchase_date';
+let sortDirection = 'desc';
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
@@ -35,6 +39,42 @@ function setupEventListeners() {
     searchQuery = '';
     clearSearch.hidden = true;
     renderReceipts();
+  });
+
+  // Items search
+  const itemsSearchInput = document.getElementById('itemsSearchInput');
+  const clearItemsSearch = document.getElementById('clearItemsSearch');
+
+  itemsSearchInput.addEventListener('input', (e) => {
+    itemsSearchQuery = e.target.value.toLowerCase();
+    clearItemsSearch.hidden = !itemsSearchQuery;
+    renderAllItems();
+  });
+
+  clearItemsSearch.addEventListener('click', () => {
+    itemsSearchInput.value = '';
+    itemsSearchQuery = '';
+    clearItemsSearch.hidden = true;
+    renderAllItems();
+  });
+
+  // Tabs
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => switchTab(tab.dataset.tab));
+  });
+
+  // Sortable columns
+  document.querySelectorAll('.all-items-table th.sortable').forEach(th => {
+    th.addEventListener('click', () => {
+      const column = th.dataset.sort;
+      if (sortColumn === column) {
+        sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+      } else {
+        sortColumn = column;
+        sortDirection = 'asc';
+      }
+      renderAllItems();
+    });
   });
 
   // New receipt button
@@ -76,6 +116,30 @@ async function loadReceipts() {
   }
 }
 
+async function loadAllItems() {
+  try {
+    const res = await fetch(`${API}/items`);
+    allItems = await res.json();
+    renderAllItems();
+  } catch (err) {
+    console.error('Failed to load items:', err);
+  }
+}
+
+function switchTab(tabName) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(c => c.hidden = true);
+
+  document.querySelector(`.tab[data-tab="${tabName}"]`).classList.add('active');
+
+  if (tabName === 'receipts') {
+    document.getElementById('receiptsTab').hidden = false;
+  } else {
+    document.getElementById('itemsTab').hidden = false;
+    loadAllItems();
+  }
+}
+
 function updateDataLists() {
   const jobNames = [...new Set(receipts.map(r => r.job_name).filter(Boolean))];
   const storeLocations = [...new Set(receipts.map(r => r.store_location).filter(Boolean))];
@@ -95,6 +159,43 @@ function getFilteredReceipts() {
     const storeMatch = receipt.store_location?.toLowerCase().includes(searchQuery);
     return jobMatch || storeMatch;
   });
+}
+
+function getFilteredAndSortedItems() {
+  let items = [...allItems];
+
+  // Filter
+  if (itemsSearchQuery) {
+    items = items.filter(item => {
+      const nameMatch = item.item_name?.toLowerCase().includes(itemsSearchQuery);
+      const storeMatch = item.store_location?.toLowerCase().includes(itemsSearchQuery);
+      const jobMatch = item.job_name?.toLowerCase().includes(itemsSearchQuery);
+      return nameMatch || storeMatch || jobMatch;
+    });
+  }
+
+  // Sort
+  items.sort((a, b) => {
+    let aVal = a[sortColumn];
+    let bVal = b[sortColumn];
+
+    if (sortColumn === 'amount') {
+      aVal = parseFloat(aVal);
+      bVal = parseFloat(bVal);
+    } else if (sortColumn === 'purchase_date') {
+      aVal = new Date(aVal);
+      bVal = new Date(bVal);
+    } else {
+      aVal = (aVal || '').toLowerCase();
+      bVal = (bVal || '').toLowerCase();
+    }
+
+    if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
+    if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  return items;
 }
 
 async function saveReceipt(formData, id) {
@@ -181,6 +282,60 @@ function renderReceipts() {
       </div>
     `;
   }).join('');
+}
+
+function renderAllItems() {
+  const tbody = document.getElementById('allItemsBody');
+  const statsEl = document.getElementById('itemsStats');
+  const items = getFilteredAndSortedItems();
+
+  // Update sort indicators
+  document.querySelectorAll('.all-items-table th.sortable').forEach(th => {
+    th.classList.remove('sort-asc', 'sort-desc');
+    if (th.dataset.sort === sortColumn) {
+      th.classList.add(sortDirection === 'asc' ? 'sort-asc' : 'sort-desc');
+    }
+  });
+
+  if (items.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--gray-600); padding: 2rem;">No items found</td></tr>';
+    statsEl.innerHTML = '';
+    return;
+  }
+
+  tbody.innerHTML = items.map(item => `
+    <tr>
+      <td>${escapeHtml(item.item_name)}</td>
+      <td>${formatDate(item.purchase_date)}</td>
+      <td>$${parseFloat(item.amount).toFixed(2)}</td>
+      <td>${escapeHtml(item.store_location || '-')}</td>
+      <td>${escapeHtml(item.job_name)}</td>
+    </tr>
+  `).join('');
+
+  // Stats
+  const total = items.reduce((sum, item) => sum + parseFloat(item.amount), 0);
+  const uniqueItems = new Set(items.map(i => i.item_name.toLowerCase())).size;
+  const uniqueStores = new Set(items.map(i => i.store_location).filter(Boolean)).size;
+
+  statsEl.innerHTML = `
+    <div class="stat">
+      <span class="stat-label">Total Items</span>
+      <span class="stat-value">${items.length}</span>
+    </div>
+    <div class="stat">
+      <span class="stat-label">Unique Items</span>
+      <span class="stat-value">${uniqueItems}</span>
+    </div>
+    <div class="stat">
+      <span class="stat-label">Stores</span>
+      <span class="stat-value">${uniqueStores}</span>
+    </div>
+    <div class="stat">
+      <span class="stat-label">Total Spent</span>
+      <span class="stat-value">$${total.toFixed(2)}</span>
+    </div>
+  `;
 }
 
 function getThumbnail(receipt) {

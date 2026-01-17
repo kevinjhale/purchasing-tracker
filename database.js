@@ -125,6 +125,22 @@ function deleteLineItem(id) {
   return item;
 }
 
+function getAllItems() {
+  return db.prepare(`
+    SELECT
+      li.id,
+      li.item_name,
+      li.purchase_date,
+      li.amount,
+      li.receipt_id,
+      r.job_name,
+      r.store_location
+    FROM line_items li
+    JOIN receipts r ON li.receipt_id = r.id
+    ORDER BY li.purchase_date DESC
+  `).all();
+}
+
 module.exports = {
   init,
   getAllReceipts,
@@ -134,5 +150,6 @@ module.exports = {
   deleteReceipt,
   addLineItem,
   updateLineItem,
-  deleteLineItem
+  deleteLineItem,
+  getAllItems
 };
