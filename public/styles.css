@@ -1042,17 +1042,34 @@ form {
   background: white;
   border-radius: var(--radius);
   box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-  padding: 1rem 1.25rem;
-  cursor: pointer;
   transition: box-shadow 0.2s, transform 0.2s;
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  align-items: stretch;
 }
 
 .job-card:hover {
   box-shadow: 0 4px 12px rgba(0,0,0,0.15);
   transform: translateY(-1px);
+}
+
+.job-card-main {
+  flex: 1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.25rem;
+  cursor: pointer;
+}
+
+.job-card-actions {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.25rem;
+  padding: 0.5rem;
+  border-left: 1px solid var(--gray-200);
+  background: var(--gray-100);
+  border-radius: 0 var(--radius) var(--radius) 0;
 }
 
 .job-card-info h3 {

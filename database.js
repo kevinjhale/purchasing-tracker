@@ -149,6 +149,33 @@ function getAllItems() {
   `).all();
 }
 
+// Job operations
+function renameJob(oldName, newName) {
+  const result = db.prepare(`
+    UPDATE receipts SET job_name = ?, updated_at = CURRENT_TIMESTAMP
+    WHERE job_name = ?
+  `).run(newName, oldName);
+  return result.changes;
+}
+
+function deleteJob(jobName) {
+  // Get all receipts for this job to return file paths
+  const receipts = db.prepare(`
+    SELECT id, file_path FROM receipts WHERE job_name = ?
+  `).all(jobName);
+
+  // Delete all receipts (cascade will handle line items)
+  db.prepare('DELETE FROM receipts WHERE job_name = ?').run(jobName);
+
+  return receipts;
+}
+
+function getReceiptsByJob(jobName) {
+  return db.prepare(`
+    SELECT * FROM receipts WHERE job_name = ? ORDER BY receipt_date DESC
+  `).all(jobName);
+}
+
 module.exports = {
   init,
   getAllReceipts,
@@ -159,5 +186,8 @@ module.exports = {
   addLineItem,
   updateLineItem,
   deleteLineItem,
-  getAllItems
+  getAllItems,
+  renameJob,
+  deleteJob,
+  getReceiptsByJob
 };

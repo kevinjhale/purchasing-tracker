@@ -245,6 +245,27 @@
     </div>
   </div>
 
+  <!-- Job Edit Modal -->
+  <div id="jobEditModal" class="modal" hidden>
+    <div class="modal-content modal-small">
+      <div class="modal-header">
+        <h2>Edit Job</h2>
+        <button class="close-btn" aria-label="Close">&times;</button>
+      </div>
+      <form id="jobEditForm">
+        <input type="hidden" id="jobEditOldName">
+        <div class="form-group">
+          <label for="jobEditName">Job Name</label>
+          <input type="text" id="jobEditName" required>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary" id="cancelJobEditBtn">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- File Preview Modal -->
   <div id="previewModal" class="modal" hidden>
     <div class="modal-content modal-preview">

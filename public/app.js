@@ -9,8 +9,10 @@ const receiptModal = document.getElementById('receiptModal');
 const itemsModal = document.getElementById('itemsModal');
 const deleteModal = document.getElementById('deleteModal');
 const previewModal = document.getElementById('previewModal');
+const jobEditModal = document.getElementById('jobEditModal');
 const receiptForm = document.getElementById('receiptForm');
 const itemForm = document.getElementById('itemForm');
+const jobEditForm = document.getElementById('jobEditForm');
 
 let receipts = [];
 let allItems = [];
@@ -121,6 +123,10 @@ function setupEventListeners() {
 
   // Back to jobs button
   document.getElementById('backToJobsBtn').addEventListener('click', showJobsList);
+
+  // Job edit form
+  jobEditForm.addEventListener('submit', handleJobEditSubmit);
+  document.getElementById('cancelJobEditBtn').addEventListener('click', () => closeModal(jobEditModal));
 
   // Click outside modal to close
   document.querySelectorAll('.modal').forEach(modal => {
@@ -336,28 +342,44 @@ function renderJobs() {
   jobsList.innerHTML = filtered.map(job => {
     const storesList = Array.from(job.stores).slice(0, 3).join(', ');
     const moreStores = job.stores.size > 3 ? ` +${job.stores.size - 3} more` : '';
+    const escapedName = escapeHtml(job.name).replace(/'/g, "\\'");
 
     return `
-      <div class="job-card" onclick="openJobDetail('${escapeHtml(job.name).replace(/'/g, "\\'")}')">
-        <div class="job-card-info">
-          <h3>${escapeHtml(job.name)}</h3>
-          <div class="job-card-meta">
-            <span>${job.receipts.length} receipt${job.receipts.length !== 1 ? 's' : ''}</span>
-            ${storesList ? `<span>${escapeHtml(storesList)}${moreStores}</span>` : ''}
+      <div class="job-card">
+        <div class="job-card-main" onclick="openJobDetail('${escapedName}')">
+          <div class="job-card-info">
+            <h3>${escapeHtml(job.name)}</h3>
+            <div class="job-card-meta">
+              <span>${job.receipts.length} receipt${job.receipts.length !== 1 ? 's' : ''}</span>
+              ${storesList ? `<span>${escapeHtml(storesList)}${moreStores}</span>` : ''}
+            </div>
+          </div>
+          <div class="job-card-stats">
+            <div class="stat">
+              <span class="stat-value">${job.itemCount}</span>
+              <span class="stat-label">Items</span>
+            </div>
+            <div class="stat">
+              <span class="stat-value">$${job.total.toFixed(2)}</span>
+              <span class="stat-label">Total</span>
+            </div>
+            <svg class="job-card-arrow" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M8 4l6 6-6 6"/>
+            </svg>
           </div>
         </div>
-        <div class="job-card-stats">
-          <div class="stat">
-            <span class="stat-value">${job.itemCount}</span>
-            <span class="stat-label">Items</span>
-          </div>
-          <div class="stat">
-            <span class="stat-value">$${job.total.toFixed(2)}</span>
-            <span class="stat-label">Total</span>
-          </div>
-          <svg class="job-card-arrow" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M8 4l6 6-6 6"/>
-          </svg>
+        <div class="job-card-actions">
+          <button class="btn-icon" onclick="event.stopPropagation(); openJobEdit('${escapedName}')" title="Edit Job">
+            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M11 4H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/>
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 0 3L12 12l-4 1 1-4 6.5-6.5a2.121 2.121 0 0 1 3 0z"/>
+            </svg>
+          </button>
+          <button class="btn-icon" onclick="event.stopPropagation(); confirmDeleteJob('${escapedName}')" title="Delete Job">
+            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+            </svg>
+          </button>
         </div>
       </div>
     `;
@@ -696,6 +718,63 @@ function confirmDelete(id, type) {
     type === 'receipt'
       ? 'Are you sure you want to delete this receipt and all its items?'
       : 'Are you sure you want to delete this item?';
+  openModal(deleteModal);
+}
+
+function openJobEdit(jobName) {
+  document.getElementById('jobEditOldName').value = jobName;
+  document.getElementById('jobEditName').value = jobName;
+  openModal(jobEditModal);
+  document.getElementById('jobEditName').focus();
+  document.getElementById('jobEditName').select();
+}
+
+async function handleJobEditSubmit(e) {
+  e.preventDefault();
+
+  const oldName = document.getElementById('jobEditOldName').value;
+  const newName = document.getElementById('jobEditName').value.trim();
+
+  if (!newName) {
+    alert('Job name is required');
+    return;
+  }
+
+  if (oldName === newName) {
+    closeModal(jobEditModal);
+    return;
+  }
+
+  try {
+    const res = await fetch(`${API}/jobs/${encodeURIComponent(oldName)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ new_name: newName })
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Failed to rename job');
+    }
+
+    closeModal(jobEditModal);
+
+    // If we were viewing this job, update currentJob
+    if (currentJob === oldName) {
+      currentJob = newName;
+      document.getElementById('jobDetailTitle').textContent = newName;
+    }
+
+    await loadReceipts();
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+function confirmDeleteJob(jobName) {
+  deleteTarget = { id: jobName, type: 'job' };
+  document.getElementById('deleteMessage').textContent =
+    `Are you sure you want to delete the job "${jobName}" and all its receipts?`;
   openModal(deleteModal);
 }
 
@@ -1135,7 +1214,25 @@ async function handleDelete() {
   if (!deleteTarget) return;
 
   try {
-    if (deleteTarget.type === 'receipt') {
+    if (deleteTarget.type === 'job') {
+      const res = await fetch(`${API}/jobs/${encodeURIComponent(deleteTarget.id)}`, {
+        method: 'DELETE'
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to delete job');
+      }
+      closeModal(deleteModal);
+      // If we were viewing this job, go back to jobs list
+      if (currentJob === deleteTarget.id) {
+        showJobsList();
+      }
+      await loadReceipts();
+      // Also refresh items tab if it was open
+      if (allItems.length > 0) {
+        await loadAllItems();
+      }
+    } else if (deleteTarget.type === 'receipt') {
       await deleteReceipt(deleteTarget.id);
       closeModal(deleteModal);
       await loadReceipts();

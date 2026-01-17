@@ -195,6 +195,53 @@ app.post('/api/upload-csv', upload.single('file'), (req, res) => {
   }
 });
 
+// Rename job (updates all receipts with that job name)
+app.put('/api/jobs/:name', (req, res) => {
+  try {
+    const oldName = decodeURIComponent(req.params.name);
+    const { new_name } = req.body;
+
+    if (!new_name || !new_name.trim()) {
+      return res.status(400).json({ error: 'New job name is required' });
+    }
+
+    const changes = db.renameJob(oldName, new_name.trim());
+    if (changes === 0) {
+      return res.status(404).json({ error: 'Job not found' });
+    }
+
+    res.json({ message: 'Job renamed', old_name: oldName, new_name: new_name.trim(), receipts_updated: changes });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Delete job (deletes all receipts and their files)
+app.delete('/api/jobs/:name', (req, res) => {
+  try {
+    const jobName = decodeURIComponent(req.params.name);
+    const receipts = db.deleteJob(jobName);
+
+    if (receipts.length === 0) {
+      return res.status(404).json({ error: 'Job not found' });
+    }
+
+    // Delete associated files
+    for (const receipt of receipts) {
+      if (receipt.file_path) {
+        const filePath = path.join(uploadsDir, receipt.file_path);
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+      }
+    }
+
+    res.json({ message: 'Job deleted', job_name: jobName, receipts_deleted: receipts.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Server running at http://localhost:${PORT}`);
 });
